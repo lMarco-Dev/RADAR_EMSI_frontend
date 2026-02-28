@@ -2,27 +2,38 @@ import { Radar, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import InputField from "../../components/ui/InputField";
 import Button from "../../components/ui/Button";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import axiosInstance from "../../api/axiosInstance";
+import { useAuthStore } from "../../store/authStore";
 
 export default function LoginPage() {
-  //1. Estado de Formulario
   const [form, setForm] = useState({ email: "", password: "" });
-
-  //2. Estado de carga del boton
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const setLogin = useAuthStore((state) => state.setLogin);
 
-  //3. Función cuando el formulario es enviado "Submit"
-  const handleSubmit = (e) => {
-    e.preventDefault(); //Evita que la pagina recarge
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
-
-    //Simulación de 2 segundos.
-    setTimeout(() => {
+    try {
+      const { data } = await axiosInstance.post('/auth/login', form);
+      if (data.success) {
+        setLogin(
+          { nombre: data.data.nombre, email: data.data.email, rol: data.data.rol }, 
+          data.data.accessToken
+        );
+        toast.success("¡Bienvenido a RADAR EMSI!");
+        navigate('/admin/dashboard'); 
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Error al iniciar sesión");
+    } finally {
       setLoading(false);
-    }, 2000);
+    }
   };
 
   return (
-    // Contenedor principal que ocupa toda la pantalla
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
       <div className="md:w-1/2 bg-slate-900 p-10 flex flex-col items-center justify-between relative overflow-hidden text-center">
         <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
