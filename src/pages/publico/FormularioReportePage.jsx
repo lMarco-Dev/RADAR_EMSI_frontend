@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Radar, ShieldCheck } from "lucide-react";
+import { Loader2, Radar, ShieldCheck } from "lucide-react";
 import StepIndicator from "../../components/ui/StepIndicator";
 import Button from "../../components/ui/Button";
 import Paso1Identificacion from "../../components/reporte/FormularioPasos/Paso1Identificacion";
@@ -20,11 +20,14 @@ export default function FormularioReportePage() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [evidencias, setEvidencias] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  //1. Manejo del estado general del formulario
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  //2. Validaciones por paso
   const isStepValid = () => {
     switch (step) {
       case 1:
@@ -44,10 +47,11 @@ export default function FormularioReportePage() {
           formData.causa && formData.descripcion && formData.medidaContencion
         );
       default:
-        return true; // Paso 4 (Evidencia) es opcional
+        return true;
     }
   };
 
+  //3. Navegación
   const handleNext = () => {
     if (isStepValid()) {
       setStep((p) => p + 1);
@@ -60,11 +64,65 @@ export default function FormularioReportePage() {
 
   const handleBack = () => setStep((p) => p - 1);
 
-  const handleSubmit = () => {
-    console.log("Enviando Reporte Final:", { ...formData, evidencias });
-    // Aquí integraremos Cloudinary próximamente
+  //4. Lógica de Cloudinary
+  const uploadToCloudinary = async (file) => {
+    const cloudName = "dhfs8sqpe";
+    const uploadPreset = "emsi_fotos";
+
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", uploadPreset);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: data,
+      });
+
+      const resData = await response.json();
+      return resData.secure_url;
+    } catch (error) {
+      console.error("Error Cloudinary: ", error);
+      return null;
+    }
   };
 
+  //5. Envío Final
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+
+    try {
+      let urlsImagenes = [];
+
+      //Subir imagenes a Cloudinary si existen
+      if (evidencias.length > 0) {
+        const uploadPromises = evidencias.map((ev) =>
+          uploadToCloudinary(ev.file),
+        );
+        urlsImagenes = await Promise.all(uploadPromises);
+      }
+
+      const reporteFinal = {
+        ...formData,
+        evidencias: urlsImagenes.filter((url) => url !== null),
+        fechaRegistro: new Date().toISOString,
+        estado: "PENDIENTE",
+      };
+
+      console.log("Reporte listo para enviar al servidor:", reporteFinal);
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    } catch (error) {
+      console.error("Error general de envío:", error);
+      alert("Hubo un error al procesar el reporte.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  //6. Renderizado dinámico de los pasos
   const renderStep = () => {
     switch (step) {
       case 1:
@@ -140,8 +198,14 @@ export default function FormularioReportePage() {
                   Siguiente
                 </Button>
               ) : (
-                <Button variant="success" onClick={handleSubmit}>
-                  Enviar Reporte
+                <Button
+                  variant="success"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2"
+                >
+                  {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isSubmitting ? "Enviando..." : "Enviar Reporte"}
                 </Button>
               )}
             </div>
