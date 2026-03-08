@@ -1,15 +1,6 @@
 import SelectField from "../../ui/SelectField";
 import TextAreaField from "../../ui/TextAreaField";
 
-const causasNega = [
-  { value: "ERROR_HUMANO", label: "Error Humano / Decisión incorrecta" },
-  { value: "FALTA_RECURSOS", label: "Falta de Recursos Adecuados" },
-  { value: "FALTA_ESTANDAR", label: "Falta de Estándar Seguro" },
-  { value: "FALTA_CAPACITACION", label: "Falta de Capacitación" },
-  { value: "CONDICION_AMBIENTAL", label: "Condición Ambiental" },
-  { value: "FALLA_EQUIPOS", label: "Falla de Equipos" },
-];
-
 const motivosPosi = [
   { value: "USO_EPP", label: "Uso correcto de EPP" },
   { value: "CUMPLIMIENTO", label: "Cumplimiento de estándares" },
@@ -17,8 +8,11 @@ const motivosPosi = [
   { value: "AYUDA", label: "Ayuda a un compañero" },
 ];
 
-export default function Paso3Detalle({ formData, onChange }) {
-  const esReconocimiento = formData.tipoComportamiento === "RECONOCIMIENTO";
+export default function Paso3Detalle({ formData, onChange, causas = [], esReconocimiento }) {
+  // Transformamos las causas de la BD al formato del SelectField
+  const opcionesCausas = Array.from(
+    new Map(causas.map((c) => [c.nombre, { value: c.id, label: c.nombre }])).values()
+  );
 
   return (
     <div className="space-y-4">
@@ -45,7 +39,7 @@ export default function Paso3Detalle({ formData, onChange }) {
           <SelectField
             label="Causa raíz (Aparente)"
             required
-            options={causasNega}
+            options={opcionesCausas}
             value={formData.causa || ""}
             onChange={(e) => onChange("causa", e.target.value)}
           />

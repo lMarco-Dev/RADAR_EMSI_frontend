@@ -2,14 +2,11 @@ import InputField from "../../ui/InputField";
 import SelectField from "../../ui/SelectField";
 import { useMemo } from "react";
 
-const empresasFalsas = [
-  { value: "emsi_1", label: "Corporación EMSI S.A.C." },
-  { value: "emsi_2", label: "EMSI Mantenimiento" },
-];
 const departamentosFalsos = [
   { value: "dep_1", label: "Operaciones" },
   { value: "dep_2", label: "SSOMA" },
 ];
+
 const turnoOptions = [
   { value: "MANANA", label: "Mañana" },
   { value: "TARDE", label: "Tarde" },
@@ -37,13 +34,6 @@ export default function Paso1Identificacion({ formData, onChange }) {
 
   return (
     <div className="space-y-4">
-      <SelectField
-        label="Empresa"
-        required
-        options={empresasFalsas}
-        value={formData.empresaId || ""}
-        onChange={(e) => onChange("empresaId", e.target.value)}
-      />
       <SelectField
         label="Departamento"
         required

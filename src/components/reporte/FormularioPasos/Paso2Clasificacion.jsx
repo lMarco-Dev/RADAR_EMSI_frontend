@@ -1,21 +1,18 @@
 import InputField from "../../ui/InputField";
 import SelectField from "../../ui/SelectField";
 
-const tiposComportamiento = [
-  { value: "COMPORTAMIENTO_INSEGURO", label: "Comportamiento inseguro" },
-  { value: "CONDICION_INSEGURA", label: "Condición insegura" },
-  { value: "CUASI_ACCIDENTE", label: "Cuasi accidente" },
-  { value: "ACCIDENTE", label: "Accidente" },
-  { value: "RECONOCIMIENTO", label: "Reconocimiento" },
-];
+export default function Paso2Clasificacion({ formData, onChange, tipos = [] }) {
+  // Transformamos el listado del backend para que el SelectField lo entienda
+  const opcionesTipos = Array.from(
+    new Map(tipos.map((t) => [t.nombre, { value: t.id, label: t.nombre }])).values()
+  );
 
-export default function Paso2Clasificacion({ formData, onChange }) {
   return (
     <div className="space-y-4">
       <SelectField
         label="Tipo de comportamiento"
         required
-        options={tiposComportamiento}
+        options={opcionesTipos}
         value={formData.tipoComportamiento || ""}
         onChange={(e) => onChange("tipoComportamiento", e.target.value)}
       />
