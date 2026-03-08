@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { Radar, ShieldCheck } from "lucide-react";
+import { Radar, ShieldCheck, Loader2 } from "lucide-react"; 
 import axiosInstance from "../../api/axiosInstance";
 import StepIndicator from "../../components/ui/StepIndicator";
 import Button from "../../components/ui/Button";
@@ -25,7 +25,7 @@ export default function FormularioReportePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketId, setTicketId] = useState(null);
 
-  // 1. Cargar datos del backend
+  // 1. Cargar datos iniciales
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -42,7 +42,7 @@ export default function FormularioReportePage() {
     cargarDatos();
   }, [token]);
 
-  // 2. NUEVO: Recuperar progreso guardado al abrir la página
+  // 2. Autoguardado: Recuperar
   useEffect(() => {
     const progresoGuardado = localStorage.getItem(`radar_reporte_${token}`);
     if (progresoGuardado) {
@@ -56,7 +56,7 @@ export default function FormularioReportePage() {
     }
   }, [token]);
 
-  // 3. NUEVO: Guardar progreso automáticamente cuando el usuario escribe
+  // 3. Autoguardado: Guardar cambios
   useEffect(() => {
     if (step < 6 && Object.keys(formData).length > 0) {
       localStorage.setItem(`radar_reporte_${token}`, JSON.stringify({
@@ -99,25 +99,24 @@ export default function FormularioReportePage() {
     setFormData({});
     setEvidencias([]);
     setTicketId(null);
-    localStorage.removeItem(`radar_reporte_${token}`); // NUEVO: Limpiar al reiniciar
+    localStorage.removeItem(`radar_reporte_${token}`);
   };
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    const loadingToast = toast.loading("Enviando reporte y subiendo evidencias...");
+    const loadingToast = toast.loading("Enviando reporte...");
 
     try {
       const formPayload = new FormData();
-      if (empresa?.id) formPayload.append("empresaId", empresa.id);
-      if (formData.tipoComportamiento) formPayload.append("tipoComportamientoId", formData.tipoComportamiento);
-      if (formData.causa) formPayload.append("causaId", formData.causa);
-      if (formData.fechaOcurrido) formPayload.append("fechaOcurrido", formData.fechaOcurrido);
-      if (formData.turno) formPayload.append("turno", formData.turno);
-      if (formData.area) formPayload.append("area", formData.area);
-      if (formData.lugarEspecifico) formPayload.append("lugarEspecifico", formData.lugarEspecifico);
-      if (formData.descripcion) formPayload.append("descripcionComportamiento", formData.descripcion);
-      if (formData.medidaContencion) formPayload.append("medidaContencion", formData.medidaContencion);
+      // Mantenemos nuestra lógica de enviar todo al backend directamente
+      Object.keys(formData).forEach(key => {
+        if (formData[key]) formPayload.append(key, formData[key]);
+      });
+      
+      // Ajuste de nombres de campos según el DTO del backend
+      formPayload.delete("descripcion");
+      formPayload.append("descripcionComportamiento", formData.descripcion);
 
       formPayload.append("camposDinamicos", JSON.stringify({
         motivoReconocimiento: formData.motivoReconocimiento
@@ -135,10 +134,10 @@ export default function FormularioReportePage() {
         toast.success("Reporte enviado con éxito", { id: loadingToast });
         setTicketId(response.data.data.folio);
         setStep(6);
-        localStorage.removeItem(`radar_reporte_${token}`); // NUEVO: Limpiar al terminar con éxito
+        localStorage.removeItem(`radar_reporte_${token}`);
       }
     } catch (error) {
-      const errorReal = error.response?.data?.message || "Error al conectar con el servidor";
+      const errorReal = error.response?.data?.message || "Error de conexión";
       toast.error(errorReal, { id: loadingToast });
     } finally {
       setIsSubmitting(false);
@@ -159,6 +158,7 @@ export default function FormularioReportePage() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
+      {/* Sidebar de diseño */}
       <div className="md:w-1/3 bg-slate-900 p-8 flex flex-col items-center justify-between relative text-center shadow-xl z-10">
         <div className="relative z-10 flex items-center gap-2 mt-2">
           <Radar className="w-8 h-8 text-red-500 animate-pulse" />
@@ -183,6 +183,7 @@ export default function FormularioReportePage() {
           <div className="bg-white p-8 rounded-3xl shadow-md border border-gray-100">
             {step < 6 && <StepIndicator steps={STEPS} currentStep={step} />}
             <div className="min-h-[400px] mt-8">{renderStep()}</div>
+            
             {step < 6 && (
               <div className="flex justify-between mt-10 pt-6 border-t border-gray-100">
                 {step > 1 && (
@@ -200,8 +201,9 @@ export default function FormularioReportePage() {
                       variant="success" 
                       onClick={handleSubmit}
                       disabled={isSubmitting}
-                      className={isSubmitting ? "opacity-50 cursor-not-allowed" : ""}
+                      className="flex items-center gap-2"
                     >
+                      {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                       {isSubmitting ? "Enviando..." : "Enviar Reporte"}
                     </Button>
                   )}
