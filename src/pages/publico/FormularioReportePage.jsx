@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { Lock } from "lucide-react";
 import { Radar, ShieldCheck, Loader2 } from "lucide-react"; 
 import axiosInstance from "../../api/axiosInstance";
 import StepIndicator from "../../components/ui/StepIndicator";
@@ -22,16 +24,26 @@ export default function FormularioReportePage() {
   
   const [empresa, setEmpresa] = useState(null);
   const [catalogos, setCatalogos] = useState({ tipos: [], causas: [] });
+  const [areasSugeridas, setAreasSugeridas] = useState([]); // NUEVO: Estado para áreas
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketId, setTicketId] = useState(null);
 
-  // 1. Cargar datos iniciales
+  const recargarAreas = async () => {
+    try {
+      const res = await axiosInstance.get(`/publico/empresa/${token}/areas`);
+      setAreasSugeridas(res.data.data || []);
+    } catch (error) {
+      console.error("Error recargando áreas", error);
+    }
+  };
+
   useEffect(() => {
     const cargarDatos = async () => {
       try {
         if (token) {
           const resEmpresa = await axiosInstance.get(`/publico/empresa/${token}`);
           setEmpresa(resEmpresa.data.data);
+          recargarAreas(); 
         }
         const resCatalogos = await axiosInstance.get('/publico/catalogos');
         setCatalogos(resCatalogos.data.data);
@@ -100,6 +112,7 @@ export default function FormularioReportePage() {
     setEvidencias([]);
     setTicketId(null);
     localStorage.removeItem(`radar_reporte_${token}`);
+    recargarAreas();
   };
 
   const handleSubmit = async () => {
@@ -109,14 +122,19 @@ export default function FormularioReportePage() {
 
     try {
       const formPayload = new FormData();
-      // Mantenemos nuestra lógica de enviar todo al backend directamente
-      Object.keys(formData).forEach(key => {
-        if (formData[key]) formPayload.append(key, formData[key]);
-      });
       
-      // Ajuste de nombres de campos según el DTO del backend
-      formPayload.delete("descripcion");
-      formPayload.append("descripcionComportamiento", formData.descripcion);
+      if (empresa?.id) formPayload.append("empresaId", empresa.id);
+
+      if (formData.tipoComportamiento) formPayload.append("tipoComportamientoId", formData.tipoComportamiento);
+      if (formData.causa) formPayload.append("causaId", formData.causa);
+      
+      formPayload.append("descripcionComportamiento", formData.descripcion || "");
+
+      Object.keys(formData).forEach(key => {
+        if (formData[key] && !['tipoComportamiento', 'causa', 'descripcion'].includes(key)) {
+          formPayload.append(key, formData[key]);
+        }
+      });
 
       formPayload.append("camposDinamicos", JSON.stringify({
         motivoReconocimiento: formData.motivoReconocimiento
@@ -137,7 +155,8 @@ export default function FormularioReportePage() {
         localStorage.removeItem(`radar_reporte_${token}`);
       }
     } catch (error) {
-      const errorReal = error.response?.data?.message || "Error de conexión";
+      console.error("Detalle del error 400:", error.response?.data);
+      const errorReal = error.response?.data?.message || "Error al enviar los datos. Revisa los campos.";
       toast.error(errorReal, { id: loadingToast });
     } finally {
       setIsSubmitting(false);
@@ -147,7 +166,8 @@ export default function FormularioReportePage() {
   const renderStep = () => {
     switch (step) {
       case 1: return <Paso1Identificacion formData={formData} onChange={handleChange} />;
-      case 2: return <Paso2Clasificacion formData={formData} onChange={handleChange} tipos={catalogos.tipos} />;
+      // NUEVO: Pasamos las areasSugeridas como prop al Paso 2
+      case 2: return <Paso2Clasificacion formData={formData} onChange={handleChange} tipos={catalogos.tipos} areasSugeridas={areasSugeridas} />;
       case 3: return <Paso3Detalle formData={formData} onChange={handleChange} causas={catalogos.causas} esReconocimiento={esReconocimiento} />;
       case 4: return <Paso4Evidencia evidencias={evidencias} onEvidenciasChange={setEvidencias} />;
       case 5: return <Paso5Confirmacion formData={formData} evidencias={evidencias} />;
@@ -175,6 +195,11 @@ export default function FormularioReportePage() {
         </div>
         <div className="relative z-10 flex items-center justify-center gap-2 text-slate-500 text-xs">
           <ShieldCheck className="w-4 h-4" /><span>© 2026 EMSI</span>
+        </div>
+        <div className="mt-8 text-center">
+          <Link to="/cliente/login" className="text-[10px] text-slate-400 hover:text-blue-500 flex items-center justify-center gap-1 transition-colors">
+            <Lock size={12} /> Acceso Supervisores
+          </Link>
         </div>
       </div>
 

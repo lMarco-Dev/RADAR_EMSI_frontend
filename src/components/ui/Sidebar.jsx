@@ -5,7 +5,12 @@ import { useAuthStore } from "../../store/authStore";
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const logout = useAuthStore((state) => state.logout);
+  const { setLogout } = useAuthStore(); 
+  
+  const handleLogout = () => {
+    setLogout(); // <-- Llama a la función correcta
+    navigate("/login"); 
+  };
 
   const menuItems = [
     { name: "Dashboard", path: "/admin/dashboard", icon: <LayoutDashboard size={20} /> },
@@ -39,12 +44,12 @@ export default function Sidebar() {
       </nav>
 
       <button 
-        onClick={logout}
-        className="flex items-center gap-4 px-4 py-3 hover:bg-red-500/10 hover:text-red-500 rounded-xl font-bold transition-all mt-auto"
-      >
-        <LogOut size={20} />
-        Cerrar Sesión
-      </button>
+      onClick={handleLogout} 
+      className="flex items-center gap-3 w-full p-3 mt-auto text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+    >
+      {/* Icono de LogOut */}
+      <span className="font-bold">Cerrar Sesión</span>
+    </button>
     </div>
   );
 }

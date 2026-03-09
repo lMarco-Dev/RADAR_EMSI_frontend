@@ -11,5 +11,7 @@ export const useAuthStore = create(
       setLogout: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     { name: 'emsi-auth' }
+    
   )
+  
 );

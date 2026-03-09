@@ -20,11 +20,23 @@ export default function LoginPage() {
       const { data } = await axiosInstance.post('/auth/login', form);
       if (data.success) {
         setLogin(
-          { nombre: data.data.nombre, email: data.data.email, rol: data.data.rol }, 
+          { 
+            nombre: data.data.nombre, 
+            email: data.data.email, 
+            rol: data.data.rol,
+            empresaNombre: data.data.empresaNombre 
+          }, 
           data.data.accessToken
         );
+        
         toast.success("¡Bienvenido a RADAR EMSI!");
-        navigate('/admin/dashboard'); 
+        
+        // Redirección dinámica por rol
+        if (data.data.rol === 'ADMIN') {
+          navigate('/admin/dashboard'); 
+        } else {
+          navigate('/cliente/dashboard'); 
+        }
       }
     } catch (error) {
       toast.error(error.response?.data?.message || "Error al iniciar sesión");

@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../../store/authStore";
 import axiosInstance from "../../api/axiosInstance";
-import { Search, Plus, X, QrCode, Copy, Building2, Upload, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Search, Plus, X, QrCode, Copy, Building2, Upload, Pencil, Trash2, AlertTriangle, UserCog, Eye, EyeOff, ShieldCheck, Info } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import toast from "react-hot-toast";
 
-// Sub-componente para manejar el error de la imagen rota
 function LogoConFallback({ url }) {
   const [error, setError] = useState(false);
 
@@ -23,11 +22,18 @@ function LogoConFallback({ url }) {
   );
 }
 
-export default function DashboardPage() {
+export default function ClientesPage() {
   const user = useAuthStore((state) => state.user);
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  const [supervisorModalData, setSupervisorModalData] = useState(null); // Empresa seleccionada
+  const [supervisorActual, setSupervisorActual] = useState(null); // Datos del supervisor si existe
+  const [loadingSup, setLoadingSup] = useState(false);
+  const [verPass, setVerPass] = useState(false); // Para mostrar/ocultar password
+
+  const [formSup, setFormSup] = useState({ nombre: "", email: "", password: "" });
   
   // Estados para Modales
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -149,6 +155,43 @@ export default function DashboardPage() {
     emp.ruc.includes(searchTerm)
   );
 
+  const abrirGestionSupervisor = async (emp) => {
+  setSupervisorModalData(emp);
+  setLoadingSup(true);
+  setSupervisorActual(null);
+  setFormSup({ nombre: "", email: "", password: "" });
+  
+  try {
+    const res = await axiosInstance.get(`/usuarios/empresa/${emp.id}`);
+    if (res.data.data && res.data.data.length > 0) {
+      setSupervisorActual(res.data.data[0]); // Tomamos el primer supervisor encontrado
+    }
+  } catch (error) {
+    console.error("Error al buscar supervisor", error);
+  } finally {
+    setLoadingSup(false);
+  }
+};
+
+const handleCrearSupervisor = async (e) => {
+  e.preventDefault();
+  const loadingToast = toast.loading("Creando acceso de supervisor...");
+  try {
+    const payload = {
+      ...formSup,
+      rol: "CLIENTE",
+      empresaId: supervisorModalData.id
+    };
+    await axiosInstance.post("/usuarios", payload);
+    toast.success("Acceso creado. El cliente ya puede loguearse.", { id: loadingToast });
+    setFormSup({ nombre: "", email: "", password: "" });
+    abrirGestionSupervisor(supervisorModalData);
+  } catch (error) {
+    const msj = error.response?.data?.message || "Error al crear supervisor";
+    toast.error(msj, { id: loadingToast });
+  }
+};
+
   return (
     <div className="p-8 max-w-6xl mx-auto bg-slate-50 min-h-screen font-sans text-slate-900">
 
@@ -225,6 +268,13 @@ export default function DashboardPage() {
                         </button>
                         <button onClick={() => setEmpresaAEliminar(emp)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Eliminar">
                           <Trash2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => abrirGestionSupervisor(emp)} 
+                          className="p-2.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all" 
+                          title="Gestionar Supervisor"
+                        >
+                          <UserCog size={18} />
                         </button>
                       </div>
                     </td>
@@ -337,6 +387,93 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Gestión de Supervisor */}
+        {supervisorModalData && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-200">
+              <div className="flex justify-between items-center p-6 border-b border-slate-50">
+                <div>
+                  <h2 className="text-xl font-black text-slate-800">Acceso Supervisor</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase">{supervisorModalData.nombre}</p>
+                </div>
+                <button onClick={() => setSupervisorModalData(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
+              </div>
+
+              <div className="p-6">
+                {loadingSup ? (
+                  <div className="py-10 text-center animate-pulse text-slate-400 font-medium">Buscando credenciales...</div>
+                ) : supervisorActual ? (
+                  /* VISTA: YA EXISTE UN SUPERVISOR */
+                  <div className="space-y-6">
+                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                        <ShieldCheck size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-blue-600 uppercase tracking-widest">Acceso Activo</p>
+                        <p className="font-bold text-slate-800">{supervisorActual.nombre}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm border-b border-slate-50 pb-2">
+                        <span className="text-slate-400 font-medium">Correo de acceso:</span>
+                        <span className="text-slate-700 font-bold">{supervisorActual.email}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-400 font-medium">Rol en sistema:</span>
+                        <span className="text-amber-600 font-black uppercase text-[10px] bg-amber-50 px-2 py-1 rounded-md tracking-tighter">CLIENTE SUPERVISOR</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setSupervisorModalData(null)}
+                      className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+                    >
+                      Cerrar Gestión
+                    </button>
+                  </div>
+                ) : (
+                  /* VISTA: CREAR NUEVO SUPERVISOR */
+                  <form onSubmit={handleCrearSupervisor} className="space-y-4">
+                    <div className="bg-amber-50 p-3 rounded-xl text-amber-700 text-[11px] font-bold flex gap-2 items-start mb-4">
+                      <Info size={16} className="shrink-0" />
+                      Esta empresa no tiene un supervisor asignado. Crea uno para que puedan acceder al Dashboard.
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nombre Completo</label>
+                      <input required type="text" className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                        value={formSup.nombre} onChange={(e) => setFormSup({...formSup, nombre: e.target.value})} />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Email Corporativo</label>
+                      <input required type="email" className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                        value={formSup.email} onChange={(e) => setFormSup({...formSup, email: e.target.value})} />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Contraseña Temporal</label>
+                      <div className="relative">
+                        <input required type={verPass ? "text" : "password"} className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                          value={formSup.password} onChange={(e) => setFormSup({...formSup, password: e.target.value})} />
+                        <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-3 text-slate-400">
+                          {verPass ? <EyeOff size={18}/> : <Eye size={18}/>}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button type="submit" className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all mt-4">
+                      Crear Credenciales
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
