@@ -1,21 +1,46 @@
-import { LayoutDashboard, Building2, ClipboardList, Users, LogOut, Radar } from "lucide-react";
+import {
+  LayoutDashboard,
+  Building2,
+  ClipboardList,
+  Users,
+  LogOut,
+  Radar,
+  Settings2,
+} from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setLogout } = useAuthStore(); 
-  
+  const { setLogout } = useAuthStore();
+
   const handleLogout = () => {
     setLogout(); // <-- Llama a la función correcta
-    navigate("/login"); 
+    navigate("/login");
   };
 
   const menuItems = [
-    { name: "Dashboard", path: "/admin/dashboard", icon: <LayoutDashboard size={20} /> },
-    { name: "Clientes", path: "/admin/clientes", icon: <Building2 size={20} /> },
-    { name: "Reportes", path: "/admin/reportes", icon: <ClipboardList size={20} /> },
+    {
+      name: "Dashboard",
+      path: "/admin/dashboard",
+      icon: <LayoutDashboard size={20} />,
+    },
+    {
+      name: "Clientes",
+      path: "/admin/clientes",
+      icon: <Building2 size={20} />,
+    },
+    {
+      name: "Reportes",
+      path: "/admin/reportes",
+      icon: <ClipboardList size={20} />,
+    },
+    {
+      name: "Catálogos",
+      path: "/admin/catalogos",
+      icon: <Settings2 size={20} />,
+    },
     { name: "Usuarios", path: "/admin/usuarios", icon: <Users size={20} /> },
   ];
 
@@ -23,7 +48,9 @@ export default function Sidebar() {
     <div className="w-64 bg-slate-900 h-screen fixed left-0 top-0 flex flex-col p-6 text-slate-300">
       <div className="flex items-center gap-3 mb-10 px-2">
         <Radar className="text-red-500 animate-pulse" size={28} />
-        <span className="text-white font-black tracking-widest text-xl">RADAR</span>
+        <span className="text-white font-black tracking-widest text-xl">
+          RADAR
+        </span>
       </div>
 
       <nav className="flex-1 space-y-2">
@@ -32,8 +59,8 @@ export default function Sidebar() {
             key={item.path}
             onClick={() => navigate(item.path)}
             className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl font-bold transition-all ${
-              location.pathname === item.path 
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-900/50" 
+              location.pathname === item.path
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-900/50"
                 : "hover:bg-slate-800 hover:text-white"
             }`}
           >
@@ -43,13 +70,16 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <button 
-      onClick={handleLogout} 
-      className="flex items-center gap-3 w-full p-3 mt-auto text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-    >
-      {/* Icono de LogOut */}
-      <span className="font-bold">Cerrar Sesión</span>
-    </button>
+      <div className="mt-auto">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full p-3 text-slate-400 hover:text-red-500 hover:bg-red-50/10 rounded-xl transition-all"
+        >
+          {/* Faltaba el ícono importado LogOut, asegúrate de importarlo arriba si quieres usarlo */}
+          {/* <LogOut size={20} /> */}
+          <span className="font-bold">Cerrar Sesión</span>
+        </button>
+      </div>
     </div>
   );
 }
