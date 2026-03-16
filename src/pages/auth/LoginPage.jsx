@@ -1,4 +1,4 @@
-import { Radar, ShieldCheck } from "lucide-react";
+import { Radar, ShieldCheck, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import InputField from "../../components/ui/InputField";
 import Button from "../../components/ui/Button";
@@ -10,12 +10,15 @@ import { useAuthStore } from "../../store/authStore";
 export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(""); // <-- NUEVO ESTADO
   const navigate = useNavigate();
   const setLogin = useAuthStore((state) => state.setLogin);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg(""); // Limpiar errores previos
+
     try {
       const { data } = await axiosInstance.post('/auth/login', form);
       
@@ -35,10 +38,10 @@ export default function LoginPage() {
         toast.success("¡Bienvenido al Sistema Interno RADAR!");
         navigate('/admin/dashboard'); 
       } else if (data.success && data.data.rol !== 'ADMIN') {
-        toast.error("Acceso denegado. Utiliza el portal de clientes para ingresar.");
+        setErrorMsg("Acceso denegado. Utiliza el portal de clientes para ingresar.");
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || "Error al iniciar sesión");
+      setErrorMsg(error.response?.data?.message || "Credenciales incorrectas o error en el servidor.");
     } finally {
       setLoading(false);
     }
@@ -96,6 +99,14 @@ export default function LoginPage() {
               Ingresa tus credenciales para acceder a tu panel de control.
             </p>
           </div>
+
+          {/* ALERTA DE ERROR VISUAL */}
+          {errorMsg && (
+            <div className="mb-6 bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+              <AlertTriangle size={20} className="shrink-0" />
+              {errorMsg}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <InputField

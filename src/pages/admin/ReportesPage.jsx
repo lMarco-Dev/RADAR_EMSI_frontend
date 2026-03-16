@@ -18,19 +18,20 @@ export default function ReportesPage() {
   const [nuevoEstado, setNuevoEstado] = useState("");
   const [comentario, setComentario] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [viendoImagenes, setViendoImagenes] = useState(false);
 
-  useEffect(() => { cargarReportes() ;cargarEstadisticas(); }, [paginaActual]);
+  useEffect(() => { cargarReportes(); cargarEstadisticas(); }, []);
 
   const cargarEstadisticas = async () => {
     try {
       const res = await axiosInstance.get("/reportes/estadisticas");
-      const data = res.data.data;
+      const contadores = res.data.data.contadores; 
 
       setEstadisticas({
-        TOTAL: data.total || 0,
-        PENDIENTE: data.pendientes || 0,
-        EN_REVISION: data.enRevision || 0,
-        SOLUCIONADO: data.solucionados || 0
+        TOTAL: contadores?.total || 0,
+        PENDIENTE: contadores?.pendientes || 0,
+        EN_REVISION: contadores?.enRevision || 0,
+        SOLUCIONADO: contadores?.solucionados || 0
       });
     } catch (error) {
       console.error("Error al cargar estadísticas:", error);
@@ -41,10 +42,9 @@ export default function ReportesPage() {
     setLoading(true);
     try {
       const response = await axiosInstance.get("/reportes", {
-        params: { page: paginaActual, size: 10 }
+        params: { page: 0, size: 1000 } 
       });
       setReportes(response.data.data.content || []);
-      setTotalPaginas(response.data.data.totalPages || 0);
     } catch (error) {
       toast.error("Error al cargar los reportes");
     } finally {
@@ -52,14 +52,14 @@ export default function ReportesPage() {
     }
   };
 
-  // NUEVO: Función para abrir modal y traer evidencias
   const abrirModal = async (id) => {
+    setViendoImagenes(false);
     setLoadingDetalle(true);
     try {
       const res = await axiosInstance.get(`/reportes/${id}`);
       const data = res.data.data;
       setReporteSeleccionado(data);
-      setNuevoEstado(data.estado); // Setea el estado actual
+      setNuevoEstado(data.estado); 
       setComentario("");
     } catch (error) {
       toast.error("Error al cargar el detalle del reporte");
@@ -69,12 +69,12 @@ export default function ReportesPage() {
   };
 
   const cerrarModal = () => {
+    setViendoImagenes(false);
     setReporteSeleccionado(null);
     setNuevoEstado("");
     setComentario("");
   };
 
-  // Ahora guarda el estado seleccionado y el comentario
   const handleGuardarCambios = async () => {
     setIsUpdating(true);
     try {
@@ -84,6 +84,7 @@ export default function ReportesPage() {
       });
       toast.success("Actualizado correctamente");
       cargarReportes(); 
+      cargarEstadisticas(); // Refrescar los contadores
       abrirModal(reporteSeleccionado.id); 
       setComentario("");
     } catch (error) {
@@ -93,7 +94,8 @@ export default function ReportesPage() {
     }
   };
 
-  const hayCambios = reporteSeleccionado && (nuevoEstado !== reporteSeleccionado.estado || comentario.trim().length > 0);
+  const estadoCambiado = reporteSeleccionado && (nuevoEstado !== reporteSeleccionado.estado);
+  const comentarioValido = comentario.trim().length > 0;
 
   const reportesFiltrados = reportes.filter(rep => {
     const matchBusqueda = rep.folio?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -112,6 +114,9 @@ export default function ReportesPage() {
 
     return matchBusqueda && matchEstado && matchFecha;
   });
+
+  const totalPaginasCalculadas = Math.ceil(reportesFiltrados.length / 10);
+  const reportesPaginados = reportesFiltrados.slice(paginaActual * 10, (paginaActual + 1) * 10);
 
   const handleExportCSV = () => {
     if (reportesFiltrados.length === 0) {
@@ -155,10 +160,8 @@ export default function ReportesPage() {
         <p className="text-slate-500 mt-1">Gestión centralizada de incidentes y evidencias</p>
       </div>
 
-      {/* Controles de Búsqueda y Filtros */}
       <div className="mb-6 space-y-3">
         
-        {/* Fila 1: Buscador Principal y Exportar */}
         <div className="flex flex-col md:flex-row gap-4 items-center">
           <div className="flex-1 w-full bg-white rounded-2xl flex items-center px-4 py-3 border border-slate-200 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-50 transition-all">
             <Search className="text-slate-400 mr-3" size={20} />
@@ -167,7 +170,7 @@ export default function ReportesPage() {
               placeholder="Buscar por folio, empresa o área..." 
               className="bg-transparent w-full outline-none text-sm font-medium text-slate-700"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPaginaActual(0); }}
             />
           </div>
           <button 
@@ -178,48 +181,51 @@ export default function ReportesPage() {
           </button>
         </div>
 
-        {/* Fila 2: Filtros Secundarios */}
         <div className="flex flex-wrap items-center gap-4 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
           
-          {/* Píldoras de Estado */}
           <div className="flex bg-slate-200/50 p-1 rounded-xl w-full md:w-auto overflow-x-auto custom-scrollbar">
-            {["TODOS", "PENDIENTE", "EN_REVISION", "SOLUCIONADO"].map((est) => (
-              <button
-                key={est}
-                onClick={() => setFiltroEstado(est)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                  filtroEstado === est 
-                    ? "bg-white text-blue-600 shadow-sm" 
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {est.replace('_', ' ')}
-              </button>
-            ))}
+            {["TODOS", "PENDIENTE", "EN_REVISION", "SOLUCIONADO"].map((est) => {
+              const cantidadReal = est === "TODOS" ? estadisticas.TOTAL : (estadisticas[est] || 0);
+              return (
+                <button
+                  key={est}
+                  onClick={() => { setFiltroEstado(est); setPaginaActual(0); }}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    filtroEstado === est 
+                      ? "bg-white text-blue-600 shadow-sm" 
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {est.replace('_', ' ')}
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${filtroEstado === est ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
+                    {cantidadReal}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
 
-          {/* Rango de Fechas */}
           <div className="flex flex-wrap items-center gap-2 text-sm w-full md:w-auto">
             <Calendar size={14} className="text-slate-400" />
             <input 
               type="date" 
               className="bg-white border border-slate-200 text-slate-600 text-xs font-medium rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 shadow-sm"
               value={fechaDesde}
-              onChange={(e) => setFechaDesde(e.target.value)}
+              onChange={(e) => { setFechaDesde(e.target.value); setPaginaActual(0); }}
             />
             <span className="text-slate-400 text-xs mx-1">-</span>
             <input 
               type="date" 
               className="bg-white border border-slate-200 text-slate-600 text-xs font-medium rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 shadow-sm"
               value={fechaHasta}
-              onChange={(e) => setFechaHasta(e.target.value)}
+              onChange={(e) => { setFechaHasta(e.target.value); setPaginaActual(0); }}
             />
             
             {(fechaDesde || fechaHasta || filtroEstado !== "TODOS") && (
               <button 
-                onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroEstado("TODOS"); }}
+                onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroEstado("TODOS"); setPaginaActual(0); }}
                 className="ml-auto md:ml-2 text-xs text-red-500 hover:text-red-700 font-bold px-3 py-1.5 bg-red-50 rounded-lg transition-colors"
               >
                 Limpiar filtros
@@ -229,7 +235,6 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* Tabla */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
           <thead>
@@ -243,7 +248,9 @@ export default function ReportesPage() {
           <tbody className="divide-y divide-slate-50">
             {loading ? (
               <tr><td colSpan="4" className="p-10 text-center animate-pulse text-slate-400">Cargando datos...</td></tr>
-            ) : reportesFiltrados.map((rep) => (
+            ) : reportesPaginados.length === 0 ? ( 
+              <tr><td colSpan="4" className="p-10 text-center text-slate-400">No se encontraron reportes.</td></tr>
+            ) : reportesPaginados.map((rep) => (   
               <tr key={rep.id} className="hover:bg-slate-50/50 transition-colors group">
                 <td className="p-5">
                   <div className="font-black text-blue-600 tracking-tight">{rep.folio}</div>
@@ -275,26 +282,8 @@ export default function ReportesPage() {
             ))}
           </tbody>
         </table>
-        {/* Footer de Tabla: Contadores y Paginación */}
-        <div className="p-4 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center bg-slate-50/50 gap-4">
-          
-          {/* Indicadores de Estado Rápidos */}
-          <div className="flex flex-wrap items-center gap-2 text-[10px] font-black tracking-wider">
-            <span className="bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm border border-slate-300">
-              TOTAL: {estadisticas.TOTAL || 0}
-            </span>
-            <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 border border-amber-200">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> PENDIENTES: {estadisticas.PENDIENTE || 0}
-            </span>
-            <span className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 border border-blue-200">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span> REVISIÓN: {estadisticas.EN_REVISION || 0}
-            </span>
-            <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 border border-green-200">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span> SOLUCIONADOS: {estadisticas.SOLUCIONADO || 0}
-            </span>
-          </div>
-
-          {/* Controles de Paginación */}
+        {/* Footer de Tabla: Solo Paginación */}
+        <div className="p-4 border-t border-slate-100 flex justify-end items-center bg-slate-50/50 gap-4">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setPaginaActual(p => Math.max(0, p - 1))} 
@@ -304,11 +293,11 @@ export default function ReportesPage() {
               Anterior
             </button>
             <span className="text-xs font-bold text-slate-500">
-              Pág. {paginaActual + 1} de {totalPaginas === 0 ? 1 : totalPaginas}
+              Pág. {paginaActual + 1} de {totalPaginasCalculadas === 0 ? 1 : totalPaginasCalculadas}
             </span>
             <button 
-              onClick={() => setPaginaActual(p => Math.min(totalPaginas - 1, p + 1))} 
-              disabled={paginaActual >= totalPaginas - 1 || totalPaginas === 0} 
+              onClick={() => setPaginaActual(p => Math.min(totalPaginasCalculadas - 1, p + 1))} 
+              disabled={paginaActual >= totalPaginasCalculadas - 1 || totalPaginasCalculadas === 0} 
               className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-50 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
             >
               Siguiente
@@ -317,169 +306,153 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* MODAL DE DETALLE INTUITIVO */}
       {reporteSeleccionado && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in duration-300">
+          <div className="bg-white rounded-[2rem] w-full max-w-7xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl animate-in zoom-in duration-300">
             
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div>
-                <span className="text-[10px] font-black bg-blue-600 text-white px-3 py-1 rounded-full uppercase tracking-widest">
-                  Detalle del Incidente
-                </span>
-                <h2 className="text-2xl font-black text-slate-800 mt-2 flex items-center gap-2">
-                  {reporteSeleccionado.folio} 
-                  <span className="text-slate-300 font-light">|</span> 
-                  <span className="text-slate-500 text-lg font-bold">{reporteSeleccionado.empresaNombre}</span>
-                </h2>
+            <div className="flex-1 flex flex-col bg-white relative overflow-hidden">
+              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center z-10 bg-white">
+                <div>
+                  <span className="text-[10px] font-black bg-blue-600 text-white px-3 py-1 rounded-full uppercase tracking-widest">
+                    Detalle del Incidente
+                  </span>
+                  <h2 className="text-2xl font-black text-slate-800 mt-2 flex items-center gap-2">
+                    {reporteSeleccionado.folio} 
+                    <span className="text-slate-300 font-light">|</span> 
+                    <span className="text-slate-500 text-lg font-bold">{reporteSeleccionado.empresaNombre}</span>
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => setViendoImagenes(!viendoImagenes)}
+                  className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm"
+                >
+                  <ImageIcon size={18} className="text-blue-500" /> 
+                  {viendoImagenes ? "Volver a Detalles" : `Ver Evidencias (${reporteSeleccionado.evidencias?.length || 0})`}
+                </button>
               </div>
-              <button onClick={cerrarModal} className="p-3 hover:bg-white hover:shadow-md rounded-full transition-all text-slate-400 hover:text-red-500">
-                <X size={24} />
-              </button>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                
-                {/* Info Izquierda */}
-                <div className="space-y-8">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <div className="flex items-center gap-2 text-slate-400 mb-1"><Calendar size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Fecha</span></div>
-                      <p className="font-bold text-slate-700">{reporteSeleccionado.fechaOcurrido}</p>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <div className="flex items-center gap-2 text-slate-400 mb-1"><Clock size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Turno</span></div>
-                      <p className="font-bold text-slate-700">{reporteSeleccionado.turno}</p>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <div className="flex items-center gap-2 text-slate-400 mb-1"><MapPin size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Área / Lugar</span></div>
-                      <p className="font-bold text-slate-700">{reporteSeleccionado.area}</p>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <div className="flex items-center gap-2 text-slate-400 mb-1"><Shield size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Clasificación</span></div>
-                      <p className="font-bold text-blue-600">{reporteSeleccionado.tipoComportamientoNombre}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-3"><MessageSquare size={16} className="text-blue-500" /> Descripción</h4>
-                      <div className="bg-blue-50/30 p-5 rounded-2xl border border-blue-100/50 text-slate-700 text-sm italic">
-                        "{reporteSeleccionado.descripcionComportamiento}"
-                      </div>
-                    </div>
-                    {reporteSeleccionado.medidaContencion && (
-                      <div>
-                        <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-3"><Shield size={16} className="text-green-500" /> Acción Inmediata</h4>
-                        <div className="bg-green-50/30 p-5 rounded-2xl border border-green-100/50 text-slate-700 text-sm">
-                          {reporteSeleccionado.medidaContencion}
-                        </div>
-                      </div>
-                      
-                    )}
-                    {/* NUEVO: Historial de Cambios (Línea de tiempo) */}
-                  {reporteSeleccionado.historial && reporteSeleccionado.historial.length > 0 && (
-                    <div className="pt-6 border-t border-slate-100">
-                      <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-4">
-                        <Clock size={16} className="text-amber-500" /> Historial de Gestión
-                      </h4>
-                      <div className="space-y-4 pl-2 border-l-2 border-slate-200 ml-2">
-                        {reporteSeleccionado.historial.map((hito, idx) => (
-                          <div key={idx} className="relative pl-4">
-                            {/* Punto en la línea */}
-                            <div className="absolute w-3 h-3 bg-blue-500 rounded-full -left-[23px] top-1.5 border-2 border-white shadow-sm"></div>
-                            
-                            <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                              {hito.estadoAnterior} <span className="text-slate-300 mx-1">➔</span> <span className="text-blue-600">{hito.estadoNuevo}</span>
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-medium mb-1.5 mt-0.5">
-                              {new Date(hito.fechaCambio).toLocaleString()} — {hito.usuarioModificador || "Sistema"}
-                            </p>
-                            
-                            {hito.comentario && (
-                              <div className="bg-slate-50 p-2.5 rounded-xl text-xs text-slate-600 border border-slate-100 italic">
-                                "{hito.comentario}"
-                              </div>
-                            )}
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                {viendoImagenes ? (
+                  <div className="animate-in fade-in duration-300">
+                    {reporteSeleccionado.evidencias && reporteSeleccionado.evidencias.length > 0 ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {reporteSeleccionado.evidencias.map((img, idx) => (
+                          <div key={idx} className="group relative rounded-3xl overflow-hidden shadow-md border-2 border-slate-100 aspect-video bg-slate-50">
+                            <img src={img.urlCloudinary} alt="Evidencia" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <a href={img.urlCloudinary} target="_blank" rel="noreferrer" className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white font-bold gap-2">
+                              <Eye size={20} /> Pantalla Completa
+                            </a>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-                    
+                    ) : (
+                      <div className="h-64 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50">
+                        <ImageIcon size={48} className="mb-2 opacity-30" />
+                        <p className="font-bold">Sin fotos adjuntas</p>
+                      </div>
+                    )}
                   </div>
-                  
-                </div>
+                ) : (
+                  <div className="animate-in fade-in duration-300 space-y-8">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-400 mb-1"><Calendar size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Fecha</span></div>
+                        <p className="font-bold text-slate-700">{reporteSeleccionado.fechaOcurrido}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-400 mb-1"><Clock size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Turno</span></div>
+                        <p className="font-bold text-slate-700">{reporteSeleccionado.turno}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-400 mb-1"><MapPin size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Área / Lugar</span></div>
+                        <p className="font-bold text-slate-700 truncate">{reporteSeleccionado.area}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-400 mb-1"><Shield size={14} /> <span className="text-[10px] font-bold uppercase tracking-wider">Clasificación</span></div>
+                        <p className="font-bold text-blue-600 truncate">{reporteSeleccionado.tipoComportamientoNombre}</p>
+                      </div>
+                    </div>
 
-                {/* Evidencias Derecha */}
-                <div className="bg-slate-50/50 rounded-[2rem] p-6 border border-slate-100">
-                  <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-6">
-                    <ImageIcon size={16} className="text-slate-400" /> Evidencias Adjuntas
-                  </h4>
-                  {reporteSeleccionado.evidencias && reporteSeleccionado.evidencias.length > 0 ? (
-                    <div className={`grid gap-4 ${reporteSeleccionado.evidencias.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                      {reporteSeleccionado.evidencias.map((img, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`group relative rounded-3xl overflow-hidden shadow-md border-4 border-white aspect-video bg-white ${
-                            reporteSeleccionado.evidencias.length === 3 && idx === 0 ? 'col-span-2' : 'col-span-1'
-                          }`}
-                        >
-                          <img src={img.urlCloudinary} alt="Evidencia" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                          <a href={img.urlCloudinary} target="_blank" rel="noreferrer" className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white font-bold gap-2">
-                            <Eye size={20} /> Ver completo
-                          </a>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div>
+                        <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-3"><MessageSquare size={16} className="text-blue-500" /> Descripción</h4>
+                        <div className="bg-blue-50/30 p-5 rounded-2xl border border-blue-100/50 text-slate-700 text-sm leading-relaxed h-[180px] overflow-y-auto custom-scrollbar">
+                          "{reporteSeleccionado.descripcionComportamiento}"
                         </div>
-                      ))}
+                      </div>
+
+                      {reporteSeleccionado.medidaContencion ? (
+                        <div>
+                          <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-3"><Shield size={16} className="text-green-500" /> Acción Inmediata</h4>
+                          <div className="bg-green-50/30 p-5 rounded-2xl border border-green-100/50 text-slate-700 text-sm leading-relaxed h-[180px] overflow-y-auto custom-scrollbar">
+                            {reporteSeleccionado.medidaContencion}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center bg-slate-50 border border-slate-100 rounded-2xl h-full text-sm font-bold text-slate-400">
+                          Sin medidas inmediatas reportadas.
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="h-64 flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-200 rounded-3xl">
-                      <ImageIcon size={48} className="mb-2 opacity-20" />
-                      <p className="font-bold text-sm">Sin fotos adjuntas</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* NUEVO: Footer Rediseñado con Respuestas Rápidas */}
-            <div className="p-6 bg-slate-900 flex flex-col gap-4">
-              <div className="flex items-center justify-between text-white">
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                  Estado Actual: <span className="text-white ml-2">{nuevoEstado}</span>
+            <div className="w-full md:w-[420px] bg-slate-900 flex flex-col z-20 border-l border-slate-800 shadow-xl">
+              <div className="p-4 flex justify-between items-center border-b border-slate-800">
+                <span className="text-xs font-bold text-slate-400 tracking-widest uppercase ml-2 flex items-center gap-2">
+                  <Clock size={14} /> Seguimiento
                 </span>
-              </div>
-              
-              {/* Plantillas de Respuestas Rápidas */}
-              <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar w-full">
-                {[
-                  "Revisado y derivado a SST.", 
-                  "Falta evidencia visual clara.", 
-                  "Atendido y solucionado en campo.",
-                  "En espera de informe del supervisor."
-                ].map((resp, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setComentario(prev => prev ? `${prev} ${resp}` : resp)}
-                    className="text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-1.5 rounded-full whitespace-nowrap transition-colors border border-slate-700 active:scale-95"
-                  >
-                    + {resp}
-                  </button>
-                ))}
+                <button onClick={cerrarModal} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-red-500 p-2 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
               </div>
 
-              <div className="flex flex-col lg:flex-row gap-4 items-center">
-                {/* Botones de Estado (Ahora solo seleccionan visualmente) */}
-                <div className="flex bg-slate-800 p-1 rounded-xl w-full lg:w-auto border border-slate-700 h-[46px]">
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                {reporteSeleccionado.historial && reporteSeleccionado.historial.length > 0 ? (
+                  <div className="space-y-5 pl-2 border-l border-slate-700 ml-2">
+                    {reporteSeleccionado.historial.map((hito, idx) => (
+                      <div key={idx} className="relative pl-5">
+                        <div className="absolute w-2.5 h-2.5 bg-blue-500 rounded-full -left-[5.5px] top-1.5 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+                        <p className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                          {hito.estadoAnterior} <span className="text-slate-600 mx-1">➔</span> <span className="text-blue-400">{hito.estadoNuevo}</span>
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-medium mb-2 mt-0.5">
+                          {new Date(hito.fechaCambio).toLocaleString()} — {hito.usuarioModificador || "Sistema"}
+                        </p>
+                        {hito.comentario && (
+                          <div className="bg-slate-800/80 p-3 rounded-xl text-xs text-slate-300 border border-slate-700/50 italic">
+                            "{hito.comentario}"
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500 text-sm italic text-center mt-10">Reporte recién ingresado. Sin movimientos.</p>
+                )}
+              </div>
+
+              <div className="p-6 bg-slate-950 border-t border-slate-800 space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Actualizar Estado</span>
+                  {!estadoCambiado && (
+                    <span className="text-[10px] text-amber-500/80 font-bold tracking-wide animate-pulse">
+                      * Elige un estado distinto
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex bg-slate-900 p-1 rounded-xl w-full border border-slate-800">
                   {['PENDIENTE', 'EN_REVISION', 'SOLUCIONADO'].map((est) => (
                     <button
                       key={est}
                       onClick={() => setNuevoEstado(est)}
-                      className={`flex-1 px-4 rounded-lg text-xs font-bold transition-all h-full ${
+                      className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${
                         nuevoEstado === est 
-                          ? (est === 'PENDIENTE' ? 'bg-amber-500 text-white shadow-md' : est === 'EN_REVISION' ? 'bg-blue-500 text-white shadow-md' : 'bg-green-500 text-white shadow-md')
-                          : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                          ? (est === 'PENDIENTE' ? 'bg-amber-500 text-white' : est === 'EN_REVISION' ? 'bg-blue-600 text-white' : 'bg-green-500 text-white')
+                          : 'text-slate-500 hover:text-white hover:bg-slate-800'
                       }`}
                     >
                       {est.replace('_', ' ')}
@@ -487,33 +460,41 @@ export default function ReportesPage() {
                   ))}
                 </div>
 
-                <div className="flex-1 flex gap-3 w-full h-[46px]">
-                  <input 
-                    type="text" 
-                    placeholder="Escribe o selecciona una respuesta rápida..." 
-                    className="bg-slate-800 text-sm text-white border border-slate-700 rounded-xl px-4 h-full flex-1 outline-none focus:border-blue-500 transition-all placeholder:text-slate-500"
+                <div className="space-y-2">
+                  <textarea 
+                    rows="2"
+                    placeholder={estadoCambiado ? "Agrega un comentario obligatorio..." : "Cambia el estado para comentar."}
+                    disabled={!estadoCambiado}
+                    className="w-full bg-slate-900 text-sm text-white border border-slate-800 rounded-xl p-3 outline-none focus:border-blue-500 transition-all placeholder:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed resize-none custom-scrollbar"
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
-                  />
+                  ></textarea>
                   
-                  {/* Botón dinámico: Cerrar o Actualizar */}
-                  {hayCambios ? (
-                    <button 
-                      onClick={handleGuardarCambios}
-                      disabled={isUpdating}
-                      className="bg-green-600 hover:bg-green-500 text-white px-6 h-full rounded-xl font-bold transition-all text-sm whitespace-nowrap shadow-lg shadow-green-900/20 active:scale-95 flex items-center justify-center min-w-[120px]"
-                    >
-                      {isUpdating ? "Guardando..." : "Actualizar"}
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={cerrarModal}
-                      className="bg-slate-700 hover:bg-slate-600 text-white px-6 h-full rounded-xl font-bold transition-all text-sm whitespace-nowrap active:scale-95 flex items-center justify-center min-w-[120px]"
-                    >
-                      Cerrar
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {["Revisado/Derivado", "Falta evidencia", "Solucionado"].map((resp, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setComentario(prev => prev ? `${prev} ${resp}` : resp)}
+                        disabled={!estadoCambiado}
+                        className="text-[10px] font-bold bg-slate-800 text-slate-400 px-2 py-1 rounded-md hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        + {resp}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                <button 
+                  onClick={handleGuardarCambios}
+                  disabled={isUpdating || !comentarioValido || !estadoCambiado}
+                  className={`w-full py-3 rounded-xl font-black transition-all text-sm uppercase tracking-wider mt-2 ${
+                    !comentarioValido || !estadoCambiado
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+                  }`}
+                >
+                  {isUpdating ? "Guardando..." : "Confirmar Actualización"}
+                </button>
               </div>
             </div>
 

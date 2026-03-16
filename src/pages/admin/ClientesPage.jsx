@@ -17,6 +17,7 @@ import {
   EyeOff,
   ShieldCheck,
   Info,
+  Key, Power, PowerOff, Save, Users
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import toast from "react-hot-toast";
@@ -43,11 +44,22 @@ export default function ClientesPage() {
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [paginaActual, setPaginaActual] = useState(0);
+  
+  
 
-  const [supervisorModalData, setSupervisorModalData] = useState(null); // Empresa seleccionada
-  const [supervisorActual, setSupervisorActual] = useState(null); // Datos del supervisor si existe
+  const [supervisorModalData, setSupervisorModalData] = useState(null);
+  const [supervisorActual, setSupervisorActual] = useState(null); 
   const [loadingSup, setLoadingSup] = useState(false);
-  const [verPass, setVerPass] = useState(false); // Para mostrar/ocultar password
+  const [supervisores, setSupervisores] = useState([]);
+  const [isCreatingSup, setIsCreatingSup] = useState(false);
+  const [resetPwdData, setResetPwdData] = useState({ id: null, password: "" });
+  const [verPass, setVerPass] = useState(false);
+
+  // ESTADOS PARA CONFIRMACIONES
+  const [confirmToggleSup, setConfirmToggleSup] = useState(null); 
+  const [confirmPasswordSup, setConfirmPasswordSup] = useState(null);
 
   const [formSup, setFormSup] = useState({
     nombre: "",
@@ -70,6 +82,14 @@ export default function ClientesPage() {
   useEffect(() => {
     cargarEmpresas();
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300); 
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const cargarEmpresas = async () => {
     setLoading(true);
@@ -213,54 +233,26 @@ export default function ClientesPage() {
 
   const empresasFiltradas = empresas.filter(
     (emp) =>
-      emp.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.ruc.includes(searchTerm),
+      emp.nombre.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
+      emp.ruc.includes(debouncedSearchTerm) 
   );
 
-  const abrirGestionSupervisor = async (emp) => {
-<<<<<<< HEAD
-  setSupervisorModalData(emp);
-  setLoadingSup(true);
-  setSupervisorActual(null);
-  setFormSup({ nombre: "", email: "", password: "" });
-  
-  try {
-    const res = await axiosInstance.get(`/usuarios/empresa/${emp.id}`);
-    if (res.data.data && res.data.data.length > 0) {
-      setSupervisorActual(res.data.data[0]); // Tomamos el primer supervisor encontrado
-    }
-  } catch (error) {
-    console.error("Error al buscar supervisor", error);
-  } finally {
-    setLoadingSup(false);
-  }
-};
+  const totalPaginasCalculadas = Math.ceil(empresasFiltradas.length / 10);
+  const empresasPaginadas = empresasFiltradas.slice(paginaActual * 10, (paginaActual + 1) * 10);
 
-const handleCrearSupervisor = async (e) => {
-  e.preventDefault();
-  const loadingToast = toast.loading("Creando acceso de supervisor...");
-  try {
-    const payload = {
-      ...formSup,
-      rol: "SUPERVISOR",
-      empresaId: supervisorModalData.id
-    };
-    await axiosInstance.post("/usuarios", payload);
-    toast.success("Acceso creado. El cliente ya puede loguearse.", { id: loadingToast });
-=======
+  const abrirGestionSupervisor = async (emp) => {
     setSupervisorModalData(emp);
     setLoadingSup(true);
-    setSupervisorActual(null);
->>>>>>> 5dd8fbd62948a68c426b48dbd278b6b1de51e5a0
+    setSupervisores([]);
+    setIsCreatingSup(false);
+    setResetPwdData({ id: null, password: "" });
     setFormSup({ nombre: "", email: "", password: "" });
 
     try {
       const res = await axiosInstance.get(`/usuarios/empresa/${emp.id}`);
-      if (res.data.data && res.data.data.length > 0) {
-        setSupervisorActual(res.data.data[0]); // Tomamos el primer supervisor encontrado
-      }
+      setSupervisores(res.data.data || []);
     } catch (error) {
-      console.error("Error al buscar supervisor", error);
+      toast.error("Error al cargar supervisores");
     } finally {
       setLoadingSup(false);
     }
@@ -268,22 +260,43 @@ const handleCrearSupervisor = async (e) => {
 
   const handleCrearSupervisor = async (e) => {
     e.preventDefault();
-    const loadingToast = toast.loading("Creando acceso de supervisor...");
+    const loadingToast = toast.loading("Creando acceso...");
     try {
-      const payload = {
-        ...formSup,
-        rol: "CLIENTE",
-        empresaId: supervisorModalData.id,
-      };
+      const payload = { ...formSup, rol: "SUPERVISOR", empresaId: supervisorModalData.id };
       await axiosInstance.post("/usuarios", payload);
-      toast.success("Acceso creado. El cliente ya puede loguearse.", {
-        id: loadingToast,
-      });
-      setFormSup({ nombre: "", email: "", password: "" });
+      toast.success("Acceso creado", { id: loadingToast });
       abrirGestionSupervisor(supervisorModalData);
     } catch (error) {
-      const msj = error.response?.data?.message || "Error al crear supervisor";
-      toast.error(msj, { id: loadingToast });
+      toast.error(error.response?.data?.message || "Error al crear", { id: loadingToast });
+    }
+  };
+
+  const ejecutarToggleEstadoSup = async () => {
+    if (!confirmToggleSup) return;
+    const loadingToast = toast.loading("Actualizando estado...");
+    try {
+      await axiosInstance.patch(`/usuarios/${confirmToggleSup}/estado`);
+      toast.success("Estado actualizado", { id: loadingToast });
+      abrirGestionSupervisor(supervisorModalData);
+    } catch (error) {
+      toast.error("Error al actualizar", { id: loadingToast });
+    } finally {
+      setConfirmToggleSup(null);
+    }
+  };
+
+  const ejecutarCambiarPassword = async () => {
+    const loadingToast = toast.loading("Cambiando contraseña...");
+    try {
+      await axiosInstance.patch(`/usuarios/${confirmPasswordSup}/password`, { 
+        password: resetPwdData.password 
+      });
+      toast.success("Contraseña actualizada", { id: loadingToast });
+      setResetPwdData({ id: null, password: "" });
+      setConfirmPasswordSup(null); 
+    } catch (error) {
+      toast.error("Error al cambiar contraseña", { id: loadingToast });
+      setConfirmPasswordSup(null);
     }
   };
 
@@ -315,7 +328,7 @@ const handleCrearSupervisor = async (e) => {
           placeholder="Buscar empresa por nombre o RUC..."
           className="w-full py-2 outline-none bg-transparent"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => { setSearchTerm(e.target.value); setPaginaActual(0); }}
         />
       </div>
 
@@ -340,14 +353,14 @@ const handleCrearSupervisor = async (e) => {
                     Cargando empresas...
                   </td>
                 </tr>
-              ) : empresasFiltradas.length === 0 ? (
+              ) : empresasPaginadas.length === 0 ? (
                 <tr>
                   <td colSpan="3" className="p-10 text-center text-slate-400">
                     No se encontraron resultados
                   </td>
                 </tr>
               ) : (
-                empresasFiltradas.map((emp) => (
+                empresasPaginadas.map((emp) => (
                   <tr
                     key={emp.id}
                     className="hover:bg-slate-50/80 transition-colors group"
@@ -414,6 +427,29 @@ const handleCrearSupervisor = async (e) => {
               )}
             </tbody>
           </table>
+          
+        </div>
+        {/* NUEVO: Controles de Paginación */}
+        <div className="p-4 border-t border-slate-100 flex justify-end items-center bg-slate-50/50 gap-4">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setPaginaActual(p => Math.max(0, p - 1))} 
+              disabled={paginaActual === 0} 
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-50 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+            >
+              Anterior
+            </button>
+            <span className="text-xs font-bold text-slate-500">
+              Pág. {paginaActual + 1} de {totalPaginasCalculadas === 0 ? 1 : totalPaginasCalculadas}
+            </span>
+            <button 
+              onClick={() => setPaginaActual(p => Math.min(totalPaginasCalculadas - 1, p + 1))} 
+              disabled={paginaActual >= totalPaginasCalculadas - 1 || totalPaginasCalculadas === 0} 
+              className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-50 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+            >
+              Siguiente
+            </button>
+          </div>
         </div>
       </div>
 
@@ -645,150 +681,186 @@ const handleCrearSupervisor = async (e) => {
         </div>
       )}
 
-      {/* Modal: Gestión de Supervisor */}
+      {/* Modal: Gestión de Supervisor REDISEÑADO */}
       {supervisorModalData && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-slate-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <div>
-                <h2 className="text-xl font-black text-slate-800">
-                  Acceso Supervisor
+                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <ShieldCheck className="text-blue-600" /> Accesos de Cliente
                 </h2>
-                <p className="text-xs text-slate-400 font-bold uppercase">
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
                   {supervisorModalData.nombre}
                 </p>
               </div>
-              <button
-                onClick={() => setSupervisorModalData(null)}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X size={20} />
+              <button onClick={() => setSupervisorModalData(null)} className="p-2 hover:bg-white hover:shadow-sm rounded-full transition-all">
+                <X size={20} className="text-slate-400" />
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
               {loadingSup ? (
                 <div className="py-10 text-center animate-pulse text-slate-400 font-medium">
                   Buscando credenciales...
                 </div>
-              ) : supervisorActual ? (
-                /* VISTA: YA EXISTE UN SUPERVISOR */
-                <div className="space-y-6">
-                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                      <ShieldCheck size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-black text-blue-600 uppercase tracking-widest">
-                        Acceso Activo
-                      </p>
-                      <p className="font-bold text-slate-800">
-                        {supervisorActual.nombre}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm border-b border-slate-50 pb-2">
-                      <span className="text-slate-400 font-medium">
-                        Correo de acceso:
-                      </span>
-                      <span className="text-slate-700 font-bold">
-                        {supervisorActual.email}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400 font-medium">
-                        Rol en sistema:
-                      </span>
-                      <span className="text-amber-600 font-black uppercase text-[10px] bg-amber-50 px-2 py-1 rounded-md tracking-tighter">
-                        CLIENTE SUPERVISOR
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setSupervisorModalData(null)}
-                    className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-bold hover:bg-slate-800 transition-all"
-                  >
-                    Cerrar Gestión
-                  </button>
-                </div>
               ) : (
-                /* VISTA: CREAR NUEVO SUPERVISOR */
-                <form onSubmit={handleCrearSupervisor} className="space-y-4">
-                  <div className="bg-amber-50 p-3 rounded-xl text-amber-700 text-[11px] font-bold flex gap-2 items-start mb-4">
-                    <Info size={16} className="shrink-0" />
-                    Esta empresa no tiene un supervisor asignado. Crea uno para
-                    que puedan acceder al Dashboard.
-                  </div>
+                <>
+                  {!isCreatingSup ? (
+                    /* LISTA DE SUPERVISORES */
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Supervisores Autorizados</h3>
+                        <button onClick={() => setIsCreatingSup(true)} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-200 flex items-center gap-1">
+                          <Plus size={14}/> Nuevo Acceso
+                        </button>
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">
-                      Nombre Completo
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={formSup.nombre}
-                      onChange={(e) =>
-                        setFormSup({ ...formSup, nombre: e.target.value })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">
-                      Email Corporativo
-                    </label>
-                    <input
-                      required
-                      type="email"
-                      className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={formSup.email}
-                      onChange={(e) =>
-                        setFormSup({ ...formSup, email: e.target.value })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">
-                      Contraseña Temporal
-                    </label>
-                    <div className="relative">
-                      <input
-                        required
-                        type={verPass ? "text" : "password"}
-                        className="w-full bg-slate-50 border-none p-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={formSup.password}
-                        onChange={(e) =>
-                          setFormSup({ ...formSup, password: e.target.value })
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setVerPass(!verPass)}
-                        className="absolute right-3 top-3 text-slate-400"
-                      >
-                        {verPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                      {supervisores.length === 0 ? (
+                        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">
+                          <Users size={32} className="mx-auto text-slate-300 mb-2" />
+                          <p className="text-sm text-slate-500 font-bold">Sin supervisores registrados</p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3">
+                          {supervisores.map(sup => (
+                            <div key={sup.id} className={`p-4 rounded-2xl border transition-all ${sup.activo ? 'border-blue-100 bg-blue-50/30' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className={`font-bold ${sup.activo ? 'text-slate-800' : 'text-slate-500 line-through'}`}>{sup.nombre}</h4>
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase ${sup.activo ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>
+                                      {sup.activo ? 'Activo' : 'Inactivo'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-0.5">{sup.email}</p>
+                                </div>
+                                <div className="flex gap-1.5">
+                                  <button onClick={() => setResetPwdData({id: sup.id, password: ""})} className="p-2 text-slate-400 hover:text-blue-600 bg-white border border-slate-200 rounded-lg">
+                                    <Key size={16}/>
+                                  </button>
+                                  <button onClick={() => setConfirmToggleSup(sup.id)} className={`p-2 rounded-lg border bg-white ${sup.activo ? 'text-red-500 hover:text-red-700 border-slate-200' : 'text-green-600 hover:text-green-700 border-slate-200'}`}>
+                                    {sup.activo ? <PowerOff size={16} /> : <Power size={16} />}
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              {/* Formulario de Cambio de Clave Inline */}
+                              {resetPwdData.id === sup.id && (
+                                <div className="mt-4 pt-3 border-t border-slate-200 flex gap-2">
+                                  <div className="relative flex-1">
+                                    <input 
+                                      type={verPass ? "text" : "password"} 
+                                      placeholder="Nueva contraseña..." 
+                                      className="text-sm border border-slate-200 px-3 py-2 rounded-xl w-full outline-none focus:border-blue-500 bg-white" 
+                                      value={resetPwdData.password} 
+                                      onChange={(e) => setResetPwdData({id: sup.id, password: e.target.value})} 
+                                    />
+                                    <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-2 text-slate-400">
+                                      {verPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                  </div>
+                                  
+                                  {/* ESTE BOTÓN LANZA EL MODAL */}
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      if(!resetPwdData.password) {
+                                        toast.error("Escribe la nueva contraseña");
+                                      } else {
+                                        setConfirmPasswordSup(sup.id);
+                                      }
+                                    }} 
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm"
+                                  >
+                                    <Save size={16}/>
+                                  </button>
+                                  <button type="button" onClick={() => {setResetPwdData({id: null, password: ""}); setVerPass(false);}} className="bg-slate-200 text-slate-600 px-3 py-2 rounded-xl text-sm font-bold"><X size={16}/></button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all mt-4"
-                  >
-                    Crear Credenciales
-                  </button>
-                </form>
+                  ) : (
+                    /* FORMULARIO DE CREACIÓN */
+                    <form onSubmit={handleCrearSupervisor} className="space-y-4">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">Nuevo Acceso</h3>
+                        <button type="button" onClick={() => setIsCreatingSup(false)} className="text-xs text-slate-400 hover:text-slate-600 font-bold flex items-center gap-1">
+                          <X size={14}/> Cancelar
+                        </button>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nombre Completo</label>
+                        <input required type="text" className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.nombre} onChange={(e) => setFormSup({ ...formSup, nombre: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Email Corporativo</label>
+                        <input required type="email" className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.email} onChange={(e) => setFormSup({ ...formSup, email: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Contraseña Temporal</label>
+                        <div className="relative">
+                          <input required type={verPass ? "text" : "password"} className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.password} onChange={(e) => setFormSup({ ...formSup, password: e.target.value })} />
+                          <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-3 text-slate-400">
+                            {verPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+                      <button type="submit" className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold mt-4">
+                        Guardar Credenciales
+                      </button>
+                    </form>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
       )}
-    </div>
+      {/* MODAL CONFIRMAR ESTADO */}
+      {confirmToggleSup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 animate-in zoom-in duration-200 text-center">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600">
+              <AlertTriangle size={32} />
+            </div>
+            <h2 className="text-xl font-black text-slate-800 mb-2">¿Cambiar Acceso?</h2>
+            <p className="text-slate-500 text-sm mb-6">
+              El usuario <b>{supervisores.find(s => s.id === confirmToggleSup)?.activo ? "perderá" : "recuperará"}</b> su acceso al sistema inmediatamente.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmToggleSup(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
+              <button onClick={ejecutarToggleEstadoSup} className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMAR CONTRASEÑA */}
+      {confirmPasswordSup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[100] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 animate-in zoom-in duration-200 text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
+              <Key size={32} />
+            </div>
+            <h2 className="text-xl font-black text-slate-800 mb-2">¿Cambiar Contraseña?</h2>
+            <p className="text-slate-500 text-sm mb-6">
+              Asegúrate de haber copiado la nueva clave antes de confirmar.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmPasswordSup(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={ejecutarCambiarPassword} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>  
   );
 }
