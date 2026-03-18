@@ -51,31 +51,25 @@ export default function DashboardPage() {
     const loadingToast = toast.loading("Generando Excel corporativo...");
 
     try {
-      // 1. Armamos la URL dependiendo de si seleccionó una empresa o "Todos"
       const url =
         filtroEmpresa === "Todos"
           ? "/reportes/exportar/excel"
           : `/reportes/exportar/excel?empresaNombre=${encodeURIComponent(filtroEmpresa)}`;
 
-      // 2. EL TRUCO: Le decimos a Axios que la respuesta será un "blob" (archivo binario puro), no un JSON.
       const response = await axiosInstance.get(url, { responseType: "blob" });
 
-      // 3. Empaquetamos esa data binaria en un objeto de tipo Excel en el navegador
       const blob = new Blob([response.data], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
 
-      // 4. Creamos una URL temporal invisible en la memoria de Chrome/Edge
       const downloadUrl = window.URL.createObjectURL(blob);
 
-      // 5. Simulamos que el usuario hizo clic en un enlace de descarga
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = `Reportes_SST_${filtroEmpresa === "Todos" ? "General" : filtroEmpresa}.xlsx`; // Nombre del archivo
+      link.download = `Reportes_SST_${filtroEmpresa === "Todos" ? "General" : filtroEmpresa}.xlsx`;
       document.body.appendChild(link);
       link.click();
 
-      // 6. Limpiamos la basura para no consumir memoria del navegador
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
 
@@ -96,7 +90,27 @@ export default function DashboardPage() {
 
         const res = await axiosInstance.get(url);
 
-        // Decodificamos los nombres antes de guardarlos en el estado para que Recharts los dibuje bien
+        // --- NUEVA LÓGICA: Agrupar la tendencia por mes y estado ---
+        const tendenciaAgrupada = res.data.data.tendencia.reduce(
+          (acc, curr) => {
+            let mesExistente = acc.find((item) => item.mes === curr.mes);
+
+            if (!mesExistente) {
+              mesExistente = {
+                mes: curr.mes,
+                PENDIENTE: 0,
+                EN_REVISION: 0,
+                SOLUCIONADO: 0,
+              };
+              acc.push(mesExistente);
+            }
+
+            mesExistente[curr.estado] += curr.cantidad;
+            return acc;
+          },
+          [],
+        );
+
         const dataLimpia = {
           ...res.data.data,
           porArea: res.data.data.porArea.map((item) => ({
@@ -111,6 +125,7 @@ export default function DashboardPage() {
             ...item,
             name: decodificarHTML(item.name),
           })),
+          tendencia: tendenciaAgrupada, // Usamos la tendencia procesada
         };
 
         setData(dataLimpia);
@@ -186,7 +201,6 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Este es el botón que llama a la función mágica de arriba */}
         <button
           onClick={handleExportarExcel}
           className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 active:scale-95"
@@ -424,7 +438,7 @@ export default function DashboardPage() {
         {/* Gráfico 4: Evolución */}
         <ChartCard
           titulo="Evolución de Incidentes"
-          info="Tendencia de reportes detectados por mes."
+          info="Tendencia mensual de reportes separados por su estado actual."
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
@@ -448,6 +462,7 @@ export default function DashboardPage() {
                 tickLine={false}
                 tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
               />
+
               <RechartsTooltip
                 contentStyle={{
                   borderRadius: "12px",
@@ -457,15 +472,58 @@ export default function DashboardPage() {
                   fontSize: "12px",
                 }}
               />
+
+              <Legend
+                wrapperStyle={{
+                  fontSize: "11px",
+                  paddingTop: "10px",
+                  fontWeight: "600",
+                }}
+              />
+
+              {/* LÍNEA 1: PENDIENTES (Ámbar) */}
               <Line
                 type="monotone"
-                dataKey="incidentes"
+                dataKey="PENDIENTE"
+                name="Pendientes"
+                stroke="#f59e0b"
+                strokeWidth={3}
+                dot={{ r: 4, strokeWidth: 2, fill: "#fff", stroke: "#f59e0b" }}
+                activeDot={{
+                  r: 6,
+                  fill: "#f59e0b",
+                  stroke: "#fff",
+                  strokeWidth: 2,
+                }}
+              />
+
+              {/* LÍNEA 2: EN REVISIÓN (Azul) */}
+              <Line
+                type="monotone"
+                dataKey="EN_REVISION"
+                name="En Revisión"
                 stroke="#3b82f6"
+                strokeWidth={3}
+                dot={{ r: 4, strokeWidth: 2, fill: "#fff", stroke: "#3b82f6" }}
+                activeDot={{
+                  r: 6,
+                  fill: "#3b82f6",
+                  stroke: "#fff",
+                  strokeWidth: 2,
+                }}
+              />
+
+              {/* LÍNEA 3: SOLUCIONADOS (Verde) */}
+              <Line
+                type="monotone"
+                dataKey="SOLUCIONADO"
+                name="Solucionados"
+                stroke="#10b981"
                 strokeWidth={4}
-                dot={{ r: 6, strokeWidth: 2, fill: "#fff", stroke: "#3b82f6" }}
+                dot={{ r: 5, strokeWidth: 2, fill: "#fff", stroke: "#10b981" }}
                 activeDot={{
                   r: 8,
-                  fill: "#3b82f6",
+                  fill: "#10b981",
                   stroke: "#fff",
                   strokeWidth: 2,
                 }}
