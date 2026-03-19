@@ -15,7 +15,9 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  Lock
 } from "lucide-react";
+import * as XLSX from 'xlsx';
 import toast from "react-hot-toast";
 
 // 1. Añadimos la función utilitaria para limpiar textos con HTML Entities
@@ -181,52 +183,135 @@ export default function ReportesPage() {
     (paginaActual + 1) * 10,
   );
 
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
     if (reportesFiltrados.length === 0) {
       toast.error("No hay datos para exportar");
       return;
     }
 
-    const separador = ";";
-    const encabezados = [
-      "Folio",
-      "Fecha",
-      "Empresa",
-      "Area",
-      "Turno",
-      "Clasificacion",
-      "Estado",
-    ].join(separador);
+    const datosExcel = reportesFiltrados.map((r) => {
+      let motivoReconocimiento = "";
+      try {
+        if (r.camposDinamicos && r.camposDinamicos !== "{}") {
+          motivoReconocimiento = JSON.parse(r.camposDinamicos).motivoReconocimiento || "";
+        }
+      } catch (e) {}
 
-    const limpiarTexto = (texto) => {
-      if (!texto) return '""';
-      return `"${texto.toString().replace(/"/g, '""').replace(/\n/g, " ")}"`;
-    };
-
-    const filas = reportesFiltrados.map((r) =>
-      [
-        r.folio,
-        r.fechaOcurrido,
-        limpiarTexto(r.empresaNombre),
-        limpiarTexto(r.area),
-        r.turno,
-        limpiarTexto(r.tipoComportamientoNombre),
-        r.estado,
-      ].join(separador),
-    );
-
-    const contenidoCSV = [encabezados, ...filas].join("\n");
-    const blob = new Blob(["\ufeff" + contenidoCSV], {
-      type: "text/csv;charset=utf-8;",
+      return {
+        "Folio": r.folio,
+        "Fecha Ocurrencia": r.fechaOcurrido,
+        "Turno": r.turno,
+        "Empresa": decodificarHTML(r.empresaNombre),
+        "Área / Lugar": decodificarHTML(r.area),
+        "Clasificación": decodificarHTML(r.tipoComportamientoNombre),
+        "Estado": r.estado.replace("_", " "),
+        "Reportante": r.nombreReportante || "No especificado",
+        "Lugar Específico": r.lugarEspecifico || "-",
+        "Causa Raíz": r.causaNombre || "-",
+        "Motivo (Si es Reconocimiento)": motivoReconocimiento || "-",
+        "Descripción Detallada": decodificarHTML(r.descripcionComportamiento),
+        "Medida de Contención": decodificarHTML(r.medidaContencion || "-")
+      };
     });
 
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Reportes_RADAR_${new Date().toISOString().split("T")[0]}.csv`;
-    link.click();
+    const worksheet = XLSX.utils.json_to_sheet(datosExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Reportes");
 
-    toast.success("CSV generado correctamente");
+    worksheet["!cols"] = [
+      { wch: 15 }, { wch: 18 }, { wch: 10 }, { wch: 25 },
+      { wch: 20 }, { wch: 25 }, { wch: 15 }, { wch: 25 },
+      { wch: 20 }, { wch: 20 }, { wch: 30 }, { wch: 60 }, { wch: 50 }
+    ];
+
+    XLSX.writeFile(workbook, `Reportes_RADAR_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Excel generado correctamente");
   };
+
+  // --- NUEVA FUNCIÓN: RENDERIZADO DINÁMICO DE CAMPOS ---
+  const renderCamposDinamicos = () => {
+    if (!reporteSeleccionado) return null;
+
+    const campos = [];
+
+    // 1. Campos Opcionales Básicos
+    if (reporteSeleccionado.nombreReportante) {
+      campos.push({ key: "Reportante", value: reporteSeleccionado.nombreReportante, isLong: false });
+    }
+    if (reporteSeleccionado.lugarEspecifico) {
+      campos.push({ key: "Lugar Específico", value: reporteSeleccionado.lugarEspecifico, isLong: false });
+    }
+
+    // 2. Parsear el JSON de camposDinámicos
+    if (reporteSeleccionado.camposDinamicos && reporteSeleccionado.camposDinamicos !== "{}") {
+      try {
+        const jsonParseado = JSON.parse(reporteSeleccionado.camposDinamicos);
+        Object.entries(jsonParseado).forEach(([key, value]) => {
+          // Si el texto tiene más de 60 caracteres, lo tratamos como texto largo (full width)
+          const isLongText = String(value).length > 60;
+          campos.push({ 
+            key: key.replace(/([A-Z])/g, ' $1').trim(), // Convierte CamelCase a texto normal
+            value: decodificarHTML(String(value)), 
+            isLong: isLongText 
+          });
+        });
+      } catch (e) {
+        console.error("Error parseando campos dinámicos", e);
+      }
+    }
+
+    if (campos.length === 0) return null;
+
+    return (
+      <>
+        {/* Línea divisoria sutil */}
+        <div className="flex items-center gap-4 my-8 opacity-50">
+          <div className="h-px bg-slate-200 flex-1"></div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Detalles Específicos del Reporte
+          </span>
+          <div className="h-px bg-slate-200 flex-1"></div>
+        </div>
+
+        {/* Renderizado de Tarjetas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {campos.map((campo, index) => (
+            <div 
+              key={index} 
+              className={`${campo.isLong ? 'lg:col-span-2' : ''}`}
+            >
+              <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-4">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                {campo.key}
+              </h4>
+              <div className={`bg-slate-50 p-6 rounded-[1.5rem] border border-slate-200 shadow-sm text-slate-600 text-sm font-medium ${campo.isLong ? 'h-[180px] overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed' : ''}`}>
+                {campo.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  // --- FUNCIONES PARA PANEL DERECHO ---
+  const formatearNombre = (nombreCompleto) => {
+    if (!nombreCompleto || nombreCompleto.toLowerCase() === "sistema") return "Sistema";
+    const partes = nombreCompleto.trim().split(" ");
+    if (partes.length === 1) return partes[0];
+    // Retorna "PrimerNombre InicialSegundoApellido." (Ej: "Carlos A.")
+    return `${partes[0]} ${partes[1].charAt(0)}.`;
+  };
+
+  const getIniciales = (nombreCompleto) => {
+    if (!nombreCompleto || nombreCompleto.toLowerCase() === "sistema") return "S";
+    const partes = nombreCompleto.trim().split(" ");
+    if (partes.length === 1) return partes[0].charAt(0).toUpperCase();
+    return (partes[0].charAt(0) + partes[1].charAt(0)).toUpperCase();
+  };
+
+  // Orden lógico de los estados para bloquear retrocesos
+  const ORDEN_ESTADOS = ["PENDIENTE", "EN_REVISION", "SOLUCIONADO"];
 
   return (
     <div className="p-8 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
@@ -256,10 +341,10 @@ export default function ReportesPage() {
             />
           </div>
           <button
-            onClick={handleExportCSV}
-            className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-white border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-slate-600 rounded-2xl font-bold transition-all text-sm shadow-sm active:scale-95"
+            onClick={handleExportExcel}
+            className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 border border-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold transition-all text-sm shadow-md active:scale-95"
           >
-            <Download size={18} /> Exportar CSV
+            <Download size={18} /> Exportar Excel
           </button>
         </div>
 
@@ -490,8 +575,7 @@ export default function ReportesPage() {
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 {viendoImagenes ? (
                   <div className="animate-in fade-in duration-300">
-                    {reporteSeleccionado.evidencias &&
-                    reporteSeleccionado.evidencias.length > 0 ? (
+                    {reporteSeleccionado.evidencias && reporteSeleccionado.evidencias.length > 0 ? (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {reporteSeleccionado.evidencias.map((img, idx) => (
                           <div
@@ -525,7 +609,8 @@ export default function ReportesPage() {
                   </div>
                 ) : (
                   <div className="animate-in fade-in duration-300 space-y-8">
-                    {/* Tarjetas de Datos Rápidos */}
+                    
+                    {/* PASO 1 y 2: DATOS BÁSICOS (Tarjetas Rápidas) */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100 shadow-sm">
                         <div className="flex items-center gap-2 text-slate-400 mb-2">
@@ -553,7 +638,7 @@ export default function ReportesPage() {
                         <div className="flex items-center gap-2 text-slate-400 mb-2">
                           <MapPin size={14} />{" "}
                           <span className="text-[10px] font-bold uppercase tracking-widest">
-                            Área / Lugar
+                            Departamento / Área
                           </span>
                         </div>
                         <p
@@ -567,7 +652,7 @@ export default function ReportesPage() {
                         <div className="flex items-center gap-2 text-blue-400 mb-2">
                           <Shield size={14} />{" "}
                           <span className="text-[10px] font-bold uppercase tracking-widest">
-                            Clasificación
+                            Tipo de comportamiento
                           </span>
                         </div>
                         <p
@@ -579,39 +664,122 @@ export default function ReportesPage() {
                       </div>
                     </div>
 
-                    {/* Textos Detallados */}
+                    {/* CAMPOS OPCIONALES Y VARIABLES CORTOS */}
+                    {(reporteSeleccionado.nombreReportante ||
+                      reporteSeleccionado.lugarEspecifico ||
+                      reporteSeleccionado.causaNombre ||
+                      (reporteSeleccionado.camposDinamicos &&
+                        reporteSeleccionado.camposDinamicos !== "{}")) && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {reporteSeleccionado.nombreReportante && (
+                          <div className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              Nombres y Apellidos
+                            </span>
+                            <p className="font-bold text-slate-700 mt-1">
+                              {reporteSeleccionado.nombreReportante}
+                            </p>
+                          </div>
+                        )}
+                        {reporteSeleccionado.lugarEspecifico && (
+                          <div className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              Lugar específico
+                            </span>
+                            <p className="font-bold text-slate-700 mt-1">
+                              {reporteSeleccionado.lugarEspecifico}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Sub-Variantes: Causa/Raíz vs Motivo del Reconocimiento */}
+                        {reporteSeleccionado.tipoComportamientoNombre?.toUpperCase() ===
+                        "RECONOCIMIENTO" ? (
+                          reporteSeleccionado.camposDinamicos &&
+                          reporteSeleccionado.camposDinamicos !== "{}" && (
+                            <div className="bg-amber-50/50 p-5 rounded-[1.5rem] border border-amber-100/50">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
+                                Motivo del Reconocimiento
+                              </span>
+                              <p className="font-bold text-slate-700 mt-1">
+                                {(() => {
+                                  try {
+                                    return (
+                                      JSON.parse(
+                                        reporteSeleccionado.camposDinamicos
+                                      ).motivoReconocimiento || "No especificado"
+                                    );
+                                  } catch (e) {
+                                    return "No especificado";
+                                  }
+                                })()}
+                              </p>
+                            </div>
+                          )
+                        ) : (
+                          reporteSeleccionado.causaNombre && (
+                            <div className="bg-red-50/50 p-5 rounded-[1.5rem] border border-red-100/50">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">
+                                Causa/Raíz
+                              </span>
+                              <p className="font-bold text-slate-700 mt-1">
+                                {reporteSeleccionado.causaNombre}
+                              </p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {/* PASO 3: TEXTOS LARGOS DINÁMICOS */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div>
+                      {/* Descripción (Cambia el título y el ancho según el tipo) */}
+                      <div
+                        className={
+                          reporteSeleccionado.tipoComportamientoNombre?.toUpperCase() ===
+                          "RECONOCIMIENTO"
+                            ? "lg:col-span-2"
+                            : ""
+                        }
+                      >
                         <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-4">
-                          <MessageSquare size={16} className="text-blue-500" />{" "}
-                          Descripción de los Hechos
+                          <MessageSquare size={16} className="text-blue-500" />
+                          {reporteSeleccionado.tipoComportamientoNombre?.toUpperCase() ===
+                          "RECONOCIMIENTO"
+                            ? "Descripción del reconocimiento"
+                            : "Descripción detallada"}
                         </h4>
-                        {/* Agregamos whitespace-pre-wrap para respetar los enter y le damos un diseño más limpio */}
-                        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm text-slate-600 text-sm leading-relaxed h-[220px] overflow-y-auto custom-scrollbar whitespace-pre-wrap font-medium">
+                        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm text-slate-600 text-sm leading-relaxed h-[200px] overflow-y-auto custom-scrollbar whitespace-pre-wrap font-medium">
                           {reporteSeleccionado.descripcionComportamiento}
                         </div>
                       </div>
 
-                      <div>
-                        <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-4">
-                          <Shield size={16} className="text-emerald-500" />{" "}
-                          Acción Inmediata Tomada
-                        </h4>
-                        {reporteSeleccionado.medidaContencion ? (
-                          <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm text-slate-600 text-sm leading-relaxed h-[220px] overflow-y-auto custom-scrollbar whitespace-pre-wrap font-medium">
-                            {reporteSeleccionado.medidaContencion}
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center bg-slate-50 border border-slate-100 rounded-[1.5rem] h-[220px] text-sm font-bold text-slate-400">
-                            Sin medidas de contención reportadas.
-                          </div>
-                        )}
-                      </div>
+                      {/* Acción Inmediata (Se oculta si es reconocimiento) */}
+                      {reporteSeleccionado.tipoComportamientoNombre?.toUpperCase() !==
+                        "RECONOCIMIENTO" && (
+                        <div>
+                          <h4 className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-wider mb-4">
+                            <Shield size={16} className="text-emerald-500" />{" "}
+                            Medida de contención inmediata
+                          </h4>
+                          {reporteSeleccionado.medidaContencion ? (
+                            <div className="bg-white p-6 rounded-[1.5rem] border border-slate-200 shadow-sm text-slate-600 text-sm leading-relaxed h-[200px] overflow-y-auto custom-scrollbar whitespace-pre-wrap font-medium">
+                              {reporteSeleccionado.medidaContencion}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center bg-slate-50 border border-slate-100 rounded-[1.5rem] h-[200px] text-sm font-bold text-slate-400 text-center px-4">
+                              Sin medidas de contención <br /> reportadas.
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
+                    
                   </div>
                 )}
               </div>
             </div>
+            {/* Fin Panel Izquierdo */}
 
             {/* Panel Derecho: Seguimiento y Actualización */}
             <div className="w-full md:w-[420px] bg-slate-900 flex flex-col z-20 border-l border-slate-800 shadow-2xl relative">
@@ -634,20 +802,32 @@ export default function ReportesPage() {
                   <div className="space-y-6 pl-3 border-l-2 border-slate-800 ml-2">
                     {reporteSeleccionado.historial.map((hito, idx) => (
                       <div key={idx} className="relative pl-6">
+                        {/* Indicador de línea de tiempo */}
                         <div className="absolute w-3 h-3 bg-blue-500 rounded-full -left-[7px] top-1 shadow-[0_0_10px_rgba(59,130,246,0.6)] ring-4 ring-slate-950"></div>
+                        
                         <p className="text-xs font-black text-slate-400 uppercase tracking-wide flex items-center gap-2">
                           {hito.estadoAnterior}{" "}
                           <ChevronRight size={12} className="text-slate-600" />{" "}
-                          <span className="text-blue-400">
+                          <span className={hito.estadoNuevo === "SOLUCIONADO" ? "text-emerald-400" : "text-blue-400"}>
                             {hito.estadoNuevo}
                           </span>
                         </p>
-                        <p className="text-[10px] text-slate-500 font-bold mb-3 mt-1">
-                          {new Date(hito.fechaCambio).toLocaleString()} — Por:{" "}
-                          {hito.usuarioModificador || "Sistema"}
-                        </p>
+                        
+                        {/* Autor del cambio con Avatar */}
+                        <div className="flex items-center gap-2 mt-2 mb-3">
+                          <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-300">
+                            {getIniciales(hito.usuarioModificador || hito.cambiadoPorNombre)}
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-bold">
+                            {new Date(hito.fechaCambio).toLocaleString()} — Por:{" "}
+                            <span className="text-slate-300">
+                              {formatearNombre(hito.usuarioModificador || hito.cambiadoPorNombre)}
+                            </span>
+                          </p>
+                        </div>
+
                         {hito.comentario && (
-                          <div className="bg-slate-900 p-4 rounded-2xl text-xs text-slate-300 border border-slate-800 italic leading-relaxed whitespace-pre-wrap font-medium">
+                          <div className="bg-slate-900 p-4 rounded-2xl text-xs text-slate-300 border border-slate-800 italic leading-relaxed whitespace-pre-wrap font-medium shadow-inner">
                             "{hito.comentario}"
                           </div>
                         )}
@@ -679,24 +859,33 @@ export default function ReportesPage() {
                   )}
                 </div>
 
-                <div className="flex bg-slate-950 p-1.5 rounded-2xl w-full border border-slate-800 shadow-inner">
-                  {["PENDIENTE", "EN_REVISION", "SOLUCIONADO"].map((est) => (
-                    <button
-                      key={est}
-                      onClick={() => setNuevoEstado(est)}
-                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-wider ${
-                        nuevoEstado === est
-                          ? est === "PENDIENTE"
-                            ? "bg-amber-500 text-slate-900 shadow-md"
-                            : est === "EN_REVISION"
-                              ? "bg-blue-600 text-white shadow-md"
-                              : "bg-emerald-500 text-slate-900 shadow-md"
-                          : "text-slate-500 hover:text-white hover:bg-slate-800"
-                      }`}
-                    >
-                      {est.replace("_", " ")}
-                    </button>
-                  ))}
+                <div className="flex bg-slate-950 p-1.5 rounded-2xl w-full border border-slate-800 shadow-inner gap-1">
+                  {ORDEN_ESTADOS.map((est, index) => {
+                    const currentIndex = ORDEN_ESTADOS.indexOf(reporteSeleccionado.estado);
+                    const isRetroceso = index < currentIndex; // Bloqueo: No puede ir a un estado anterior
+                    
+                    return (
+                      <button
+                        key={est}
+                        disabled={isRetroceso}
+                        onClick={() => setNuevoEstado(est)}
+                        className={`flex-1 flex justify-center items-center gap-1.5 py-2.5 rounded-xl text-[9px] sm:text-[10px] font-black transition-all uppercase tracking-wider ${
+                          isRetroceso 
+                            ? "opacity-30 cursor-not-allowed text-slate-600" // Estilo bloqueado
+                            : nuevoEstado === est
+                              ? est === "PENDIENTE"
+                                ? "bg-amber-500 text-slate-900 shadow-md"
+                                : est === "EN_REVISION"
+                                  ? "bg-blue-600 text-white shadow-md"
+                                  : "bg-emerald-500 text-slate-900 shadow-md"
+                              : "text-slate-500 hover:text-white hover:bg-slate-800"
+                        }`}
+                      >
+                        {isRetroceso && <Lock size={10} />}
+                        {est.replace("_", " ")}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="space-y-3">
@@ -724,7 +913,7 @@ export default function ReportesPage() {
                         key={i}
                         onClick={() =>
                           setComentario((prev) =>
-                            prev ? `${prev} ${resp}. ` : `${resp}. `,
+                            prev ? `${prev} ${resp}. ` : `${resp}. `
                           )
                         }
                         disabled={!estadoCambiado}

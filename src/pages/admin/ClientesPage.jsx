@@ -103,6 +103,19 @@ export default function ClientesPage() {
     }
   };
 
+  const esEmailValido = (email) => {
+    const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return regex.test(email);
+  };
+
+  const validarPassword = (pass) => {
+    return {
+      longitud: pass.length >= 8,
+      letras: /[a-z]/.test(pass) && /[A-Z]/.test(pass),
+      numero: /[0-9]/.test(pass)
+    };
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) setFormData({ ...formData, logo: file });
@@ -745,37 +758,54 @@ export default function ClientesPage() {
                                 </div>
                               </div>
                               
-                              {/* Formulario de Cambio de Clave Inline */}
+                              {/* Formulario de Cambio de Clave Inline MODIFICADO */}
                               {resetPwdData.id === sup.id && (
-                                <div className="mt-4 pt-3 border-t border-slate-200 flex gap-2">
-                                  <div className="relative flex-1">
-                                    <input 
-                                      type={verPass ? "text" : "password"} 
-                                      placeholder="Nueva contraseña..." 
-                                      className="text-sm border border-slate-200 px-3 py-2 rounded-xl w-full outline-none focus:border-blue-500 bg-white" 
-                                      value={resetPwdData.password} 
-                                      onChange={(e) => setResetPwdData({id: sup.id, password: e.target.value})} 
-                                    />
-                                    <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-2 text-slate-400">
-                                      {verPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
-                                  </div>
-                                  
-                                  {/* ESTE BOTÓN LANZA EL MODAL */}
-                                  <button 
-                                    type="button"
-                                    onClick={() => {
-                                      if(!resetPwdData.password) {
-                                        toast.error("Escribe la nueva contraseña");
-                                      } else {
-                                        setConfirmPasswordSup(sup.id);
+                                <div className="mt-4 pt-3 border-t border-slate-200">
+                                  <div className="flex gap-2 relative">
+                                    <div className="relative flex-1">
+                                      <input 
+                                        type={verPass ? "text" : "password"} 
+                                        placeholder="Nueva contraseña..." 
+                                        className="text-sm border border-slate-200 px-3 py-2 rounded-xl w-full outline-none focus:border-blue-500 bg-white" 
+                                        value={resetPwdData.password} 
+                                        onChange={(e) => setResetPwdData({id: sup.id, password: e.target.value})} 
+                                      />
+                                      <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-2 text-slate-400 hover:text-slate-600">
+                                        {verPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                                      </button>
+                                    </div>
+                                    
+                                    <button 
+                                      type="button"
+                                      disabled={
+                                        !validarPassword(resetPwdData.password).longitud ||
+                                        !validarPassword(resetPwdData.password).letras ||
+                                        !validarPassword(resetPwdData.password).numero
                                       }
-                                    }} 
-                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm"
-                                  >
-                                    <Save size={16}/>
-                                  </button>
-                                  <button type="button" onClick={() => {setResetPwdData({id: null, password: ""}); setVerPass(false);}} className="bg-slate-200 text-slate-600 px-3 py-2 rounded-xl text-sm font-bold"><X size={16}/></button>
+                                      onClick={() => {
+                                          setConfirmPasswordSup(sup.id);
+                                      }} 
+                                      className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm disabled:opacity-50 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                    >
+                                      <Save size={16}/>
+                                    </button>
+                                    <button type="button" onClick={() => {setResetPwdData({id: null, password: ""}); setVerPass(false);}} className="bg-slate-200 hover:bg-slate-300 text-slate-600 px-3 py-2 rounded-xl text-sm font-bold transition-colors"><X size={16}/></button>
+                                  </div>
+
+                                  {/* CHECKS VISUALES INLINE */}
+                                  {resetPwdData.password && (
+                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 animate-in fade-in">
+                                      <span className={`text-[9px] font-bold transition-colors ${validarPassword(resetPwdData.password).longitud ? 'text-green-600' : 'text-slate-400'}`}>
+                                        {validarPassword(resetPwdData.password).longitud ? '✓' : '○'} 8+ chars
+                                      </span>
+                                      <span className={`text-[9px] font-bold transition-colors ${validarPassword(resetPwdData.password).letras ? 'text-green-600' : 'text-slate-400'}`}>
+                                        {validarPassword(resetPwdData.password).letras ? '✓' : '○'} Aa
+                                      </span>
+                                      <span className={`text-[9px] font-bold transition-colors ${validarPassword(resetPwdData.password).numero ? 'text-green-600' : 'text-slate-400'}`}>
+                                        {validarPassword(resetPwdData.password).numero ? '✓' : '○'} 123
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -796,20 +826,71 @@ export default function ClientesPage() {
                         <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nombre Completo</label>
                         <input required type="text" className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.nombre} onChange={(e) => setFormSup({ ...formSup, nombre: e.target.value })} />
                       </div>
+                      {/* CAMPO EMAIL MODIFICADO */}
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Email Corporativo</label>
-                        <input required type="email" className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.email} onChange={(e) => setFormSup({ ...formSup, email: e.target.value })} />
+                        <input 
+                          required 
+                          type="email" 
+                          className={`w-full bg-slate-50 border p-3 rounded-xl outline-none transition-all ${
+                            formSup.email && !esEmailValido(formSup.email) 
+                              ? "border-red-400 focus:ring-2 focus:ring-red-200" 
+                              : "border-slate-100 focus:border-blue-500"
+                          }`}
+                          value={formSup.email} 
+                          onChange={(e) => setFormSup({ ...formSup, email: e.target.value })} 
+                        />
+                        {formSup.email && !esEmailValido(formSup.email) && (
+                          <p className="text-[10px] text-red-500 font-bold mt-1.5 animate-in fade-in">
+                            Debe ser un correo válido (ej: usuario@empresa.com)
+                          </p>
+                        )}
                       </div>
+                      
+                      {/* CAMPO CONTRASEÑA MODIFICADO */}
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Contraseña Temporal</label>
                         <div className="relative">
-                          <input required type={verPass ? "text" : "password"} className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none" value={formSup.password} onChange={(e) => setFormSup({ ...formSup, password: e.target.value })} />
-                          <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-3 text-slate-400">
+                          <input 
+                            required 
+                            type={verPass ? "text" : "password"} 
+                            className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl outline-none focus:border-blue-500 transition-all" 
+                            value={formSup.password} 
+                            onChange={(e) => setFormSup({ ...formSup, password: e.target.value })} 
+                          />
+                          <button type="button" onClick={() => setVerPass(!verPass)} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
                             {verPass ? <EyeOff size={18} /> : <Eye size={18} />}
                           </button>
                         </div>
+                        
+                        {/* INDICADORES INTERACTIVOS DE CONTRASEÑA */}
+                        {formSup.password && (
+                          <div className="mt-2.5 space-y-1 animate-in slide-in-from-top-1">
+                            <p className={`text-[10px] font-bold flex items-center gap-1.5 transition-colors ${validarPassword(formSup.password).longitud ? 'text-green-600' : 'text-slate-400'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${validarPassword(formSup.password).longitud ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                              Al menos 8 caracteres
+                            </p>
+                            <p className={`text-[10px] font-bold flex items-center gap-1.5 transition-colors ${validarPassword(formSup.password).letras ? 'text-green-600' : 'text-slate-400'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${validarPassword(formSup.password).letras ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                              Una minúscula y una mayúscula
+                            </p>
+                            <p className={`text-[10px] font-bold flex items-center gap-1.5 transition-colors ${validarPassword(formSup.password).numero ? 'text-green-600' : 'text-slate-400'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${validarPassword(formSup.password).numero ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                              Al menos 1 número
+                            </p>
+                          </div>
+                        )}
                       </div>
-                      <button type="submit" className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold mt-4">
+                      <button 
+                        type="submit" 
+                        disabled={
+                          !esEmailValido(formSup.email) || 
+                          !validarPassword(formSup.password).longitud ||
+                          !validarPassword(formSup.password).letras ||
+                          !validarPassword(formSup.password).numero
+                        }
+                        className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold mt-4 disabled:opacity-50 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all"
+                      >
                         Guardar Credenciales
                       </button>
                     </form>

@@ -113,7 +113,6 @@ export default function LoginPage() {
               label="Correo electrónico"
               type="email"
               required
-              placeholder="ejemplo@emsi.com"
               value={form.email}
               onChange={(e) =>
                 setForm((p) => ({ ...p, email: e.target.value }))
@@ -125,20 +124,11 @@ export default function LoginPage() {
                 label="Contraseña"
                 type="password"
                 required
-                placeholder="••••••••"
                 value={form.password}
                 onChange={(e) =>
                   setForm((p) => ({ ...p, password: e.target.value }))
                 }
               />
-              <div className="flex justify-end mt-1">
-                <a
-                  href="#"
-                  className="text-sm font-semibold text-red-700 hover:text-red-800 transition-colors"
-                >
-                  ¿Olvidaste tu contraseña?
-                </a>
-              </div>
             </div>
 
             <Button

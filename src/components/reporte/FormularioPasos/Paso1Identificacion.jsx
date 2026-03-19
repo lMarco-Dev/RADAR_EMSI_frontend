@@ -13,8 +13,6 @@ export default function Paso1Identificacion({
   onChange,
   departamentos = [],
 }) {
-  // Convertimos el arreglo de strings que manda el backend
-  // al formato de opciones que entiende tu SelectField
   const opcionesDepartamentos = useMemo(() => {
     return departamentos.map((dep) => ({
       value: dep,
@@ -45,14 +43,12 @@ export default function Paso1Identificacion({
       <SelectField
         label="Departamento / Área"
         required
-        // Aquí pasamos las opciones procesadas
         options={opcionesDepartamentos}
         value={formData.area || ""}
         onChange={(e) => onChange("area", e.target.value)}
       />
       <InputField
-        label="Nombres y Apellidos (Opcional)"
-        placeholder="Ej: Juan Pérez"
+        label="Nombres y Apellidos"
         value={formData.nombreReportante || ""}
         onChange={handleNameChange}
       />

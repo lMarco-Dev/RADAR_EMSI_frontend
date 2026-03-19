@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axiosInstance from "../../api/axiosInstance";
 import {
   BarChart,
@@ -26,6 +26,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Calendar,
+  X,
+  Building2, ChevronDown, Search
 } from "lucide-react";
 
 import toast from "react-hot-toast";
@@ -42,8 +45,19 @@ export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Estados para los filtros y paginación
+  // ESTADOS DE LA BARRA DE CONTROLES UNIFICADA
   const [filtroEmpresa, setFiltroEmpresa] = useState("Todos");
+  const [filtroMes, setFiltroMes] = useState(""); // Formato: "YYYY-MM"
+
+  const [dropdownAbierto, setDropdownAbierto] = useState(false);
+  const [busquedaEmpresa, setBusquedaEmpresa] = useState("");
+  const dropdownRef = useRef(null);
+
+  const [mesInicioSistema, setMesInicioSistema] = useState("");
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  
+  // Paginación de Empresas Top
   const [verTodasEmpresas, setVerTodasEmpresas] = useState(false);
   const [paginaEmpresas, setPaginaEmpresas] = useState(0);
 
@@ -51,11 +65,12 @@ export default function DashboardPage() {
     const loadingToast = toast.loading("Generando Excel corporativo...");
 
     try {
-      const url =
-        filtroEmpresa === "Todos"
-          ? "/reportes/exportar/excel"
-          : `/reportes/exportar/excel?empresaNombre=${encodeURIComponent(filtroEmpresa)}`;
+      // Arma la URL con los filtros dinámicamente
+      const params = new URLSearchParams();
+      if (filtroEmpresa !== "Todos") params.append("empresaNombre", filtroEmpresa);
+      if (filtroMes) params.append("mes", filtroMes);
 
+      const url = `/reportes/exportar/excel?${params.toString()}`;
       const response = await axiosInstance.get(url, { responseType: "blob" });
 
       const blob = new Blob([response.data], {
@@ -63,10 +78,13 @@ export default function DashboardPage() {
       });
 
       const downloadUrl = window.URL.createObjectURL(blob);
-
       const link = document.createElement("a");
+      
+      let nombreArchivo = `Reportes_SST_${filtroEmpresa === "Todos" ? "General" : filtroEmpresa}`;
+      if (filtroMes) nombreArchivo += `_${filtroMes}`;
+      
       link.href = downloadUrl;
-      link.download = `Reportes_SST_${filtroEmpresa === "Todos" ? "General" : filtroEmpresa}.xlsx`;
+      link.download = `${nombreArchivo}.xlsx`;
       document.body.appendChild(link);
       link.click();
 
@@ -81,16 +99,26 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    const cargarDashboard = async () => {
-      try {
-        const url =
-          filtroEmpresa === "Todos"
-            ? "/reportes/estadisticas"
-            : `/reportes/estadisticas?empresa=${encodeURIComponent(filtroEmpresa)}`;
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownAbierto(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
+  useEffect(() => {
+    const cargarDashboard = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filtroEmpresa !== "Todos") params.append("empresa", filtroEmpresa);
+        if (filtroMes) params.append("mes", filtroMes);
+
+        const url = `/reportes/estadisticas?${params.toString()}`;
         const res = await axiosInstance.get(url);
 
-        // --- NUEVA LÓGICA: Agrupar la tendencia por mes y estado ---
         const tendenciaAgrupada = res.data.data.tendencia.reduce(
           (acc, curr) => {
             let mesExistente = acc.find((item) => item.mes === curr.mes);
@@ -125,8 +153,10 @@ export default function DashboardPage() {
             ...item,
             name: decodificarHTML(item.name),
           })),
-          tendencia: tendenciaAgrupada, // Usamos la tendencia procesada
+          tendencia: tendenciaAgrupada,
         };
+
+        setMesInicioSistema(res.data.data.mesInicioSistema || mesActual);
 
         setData(dataLimpia);
       } catch (error) {
@@ -135,10 +165,11 @@ export default function DashboardPage() {
         setLoading(false);
       }
     };
+    
     cargarDashboard();
-  }, [filtroEmpresa]);
+  }, [filtroEmpresa, filtroMes]); 
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="h-screen flex flex-col items-center justify-center text-slate-400 bg-slate-50">
         <Loader2 className="animate-spin mb-4 text-blue-500" size={48} />
@@ -176,7 +207,7 @@ export default function DashboardPage() {
     (paginaEmpresas + 1) * limiteEmpresas,
   );
 
-  // Custom Tooltip para los gráficos (Look oscuro y profesional)
+  // Custom Tooltip para los gráficos
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       return (
@@ -188,27 +219,119 @@ export default function DashboardPage() {
     return null;
   };
 
+  const opcionesEmpresas = porEmpresa?.filter(emp => 
+    emp.name.toLowerCase().includes(busquedaEmpresa.toLowerCase())
+  ) || [];
+
   return (
-    <div className="p-8 animate-in fade-in duration-500 bg-slate-50 min-h-screen font-sans text-slate-900">
-      {/* HEADER */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-8 animate-in fade-in duration-500 bg-slate-50 min-h-screen font-sans text-slate-900 relative">
+      
+      {/* HEADER Y BARRA DE CONTROLES UNIFICADA */}
+      <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6 z-40 relative">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            Panel Gerencial SST
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Análisis estratégico basado en datos reales
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight">Panel Gerencial SST</h1>
+          <p className="text-slate-500 mt-1">Análisis estratégico basado en datos reales</p>
         </div>
 
-        <button
-          onClick={handleExportarExcel}
-          className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 active:scale-95"
-        >
-          <Download size={18} />
-          Exportar a Excel
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          
+          {/* FILTRO 1: BUSCADOR INTELIGENTE DE EMPRESA */}
+          <div className="relative" ref={dropdownRef}>
+            <div 
+              className={`bg-white border flex items-center px-3 py-2 rounded-xl shadow-sm transition-all cursor-text ${
+                dropdownAbierto ? "ring-2 ring-blue-100 border-blue-400" : "border-slate-200"
+              }`}
+              onClick={() => setDropdownAbierto(true)}
+            >
+              <Building2 size={16} className="text-slate-400 mr-2" />
+              <input
+                type="text"
+                placeholder={dropdownAbierto ? "Escribe para buscar..." : ""}
+                className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-48 placeholder:text-slate-400 placeholder:font-medium"
+                value={dropdownAbierto ? busquedaEmpresa : (filtroEmpresa === "Todos" ? "Todas las empresas" : filtroEmpresa)}
+                onChange={(e) => setBusquedaEmpresa(e.target.value)}
+                readOnly={!dropdownAbierto}
+              />
+              <ChevronDown size={16} className={`text-slate-400 transition-transform ${dropdownAbierto ? "rotate-180" : ""}`} />
+            </div>
+
+            {dropdownAbierto && (
+              <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
+                <div
+                  className="px-4 py-3 text-sm font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors border-b border-slate-100 flex items-center gap-2"
+                  onClick={() => {
+                    setFiltroEmpresa("Todos");
+                    setPaginaEmpresas(0);
+                    setDropdownAbierto(false);
+                    setBusquedaEmpresa("");
+                  }}
+                >
+                  Todas las empresas
+                </div>
+                {opcionesEmpresas.length > 0 ? (
+                  opcionesEmpresas.map((emp, i) => (
+                    <div
+                      key={i}
+                      className="px-4 py-3 text-sm font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors border-b border-slate-50 last:border-0 truncate"
+                      title={emp.name}
+                      onClick={() => {
+                        setFiltroEmpresa(emp.name);
+                        setPaginaEmpresas(0);
+                        setDropdownAbierto(false);
+                        setBusquedaEmpresa("");
+                      }}
+                    >
+                      {emp.name}
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-6 text-sm text-slate-400 text-center italic flex flex-col items-center justify-center gap-2">
+                    <Search size={20} className="opacity-50" />
+                    No se encontró la empresa
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* FILTRO 2: MES VALIDADO */}
+          <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400">
+            <Calendar size={16} className="text-slate-400" />
+            <input
+              type="month"
+              min={mesInicioSistema}
+              max={mesActual}
+              value={filtroMes}
+              onChange={(e) => setFiltroMes(e.target.value)}
+              className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer min-w-[120px]"
+            />
+            {filtroMes && (
+              <button
+                onClick={() => setFiltroMes("")}
+                title="Limpiar filtro de mes"
+                className="text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md p-1 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* BOTÓN EXPORTAR */}
+          <button
+            onClick={handleExportarExcel}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-200 active:scale-95"
+          >
+            <Download size={18} />
+            <span className="hidden sm:inline">Exportar Excel</span>
+          </button>
+        </div>
       </div>
+
+      {loading && (
+        <div className="absolute inset-0 bg-slate-50/50 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-xl">
+           <Loader2 className="animate-spin text-blue-500" size={40} />
+        </div>
+      )}
 
       {/* TARJETAS KPI */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -240,24 +363,11 @@ export default function DashboardPage() {
 
       {/* GRÁFICOS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
         {/* Gráfico 1: Zonas Calientes */}
         <ChartCard
           titulo="Zonas Calientes (Área)"
-          info="Áreas con mayor acumulación de reportes. Top 3 general o Top 5 por empresa."
-          extraHeader={
-            <select
-              value={filtroEmpresa}
-              onChange={(e) => setFiltroEmpresa(e.target.value)}
-              className="bg-slate-100 border-none text-xs font-bold text-slate-600 rounded-lg px-3 py-1.5 outline-none cursor-pointer hover:bg-slate-200 transition-colors"
-            >
-              <option value="Todos">Todas las Empresas</option>
-              {porEmpresa.map((emp, i) => (
-                <option key={i} value={emp.name}>
-                  {emp.name}
-                </option>
-              ))}
-            </select>
-          }
+          info="Áreas con mayor acumulación de reportes en el periodo seleccionado."
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
@@ -265,11 +375,7 @@ export default function DashboardPage() {
               layout="vertical"
               margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
             >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                horizontal={false}
-                stroke="#e2e8f0"
-              />
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
               <XAxis type="number" hide />
               <YAxis
                 dataKey="name"
@@ -279,31 +385,18 @@ export default function DashboardPage() {
                 tick={{ fill: "#64748b", fontSize: 11, fontWeight: 600 }}
                 width={120}
               />
-              <RechartsTooltip
-                content={<CustomTooltip />}
-                cursor={{ fill: "#f8fafc" }}
-              />
-
+              <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
               <Bar dataKey="cantidad" radius={[0, 8, 8, 0]} barSize={24}>
                 {areasAMostrar.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
-                <LabelList
-                  dataKey="cantidad"
-                  position="right"
-                  fill="#64748b"
-                  fontSize={12}
-                  fontWeight={900}
-                />
+                <LabelList dataKey="cantidad" position="right" fill="#64748b" fontSize={12} fontWeight={900} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* Gráfico 2: Top Empresas con Paginación */}
+        {/* Gráfico 2: Top Empresas */}
         <ChartCard
           titulo="Empresas con más Reportes"
           info="Clientes que generan mayor volumen de incidencias."
@@ -329,11 +422,7 @@ export default function DashboardPage() {
                   layout="vertical"
                   margin={{ top: 5, right: 40, left: 20, bottom: 5 }}
                 >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    horizontal={false}
-                    stroke="#e2e8f0"
-                  />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                   <XAxis type="number" hide />
                   <YAxis
                     dataKey="name"
@@ -343,30 +432,19 @@ export default function DashboardPage() {
                     tick={{ fill: "#64748b", fontSize: 11, fontWeight: 600 }}
                     width={120}
                   />
-                  <RechartsTooltip
-                    content={<CustomTooltip />}
-                    cursor={{ fill: "#f8fafc" }}
-                  />
-
+                  <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
                   <Bar
                     dataKey="cantidad"
                     fill="#8b5cf6"
                     radius={[0, 8, 8, 0]}
                     barSize={verTodasEmpresas ? 14 : 24}
                   >
-                    <LabelList
-                      dataKey="cantidad"
-                      position="right"
-                      fill="#64748b"
-                      fontSize={12}
-                      fontWeight={900}
-                    />
+                    <LabelList dataKey="cantidad" position="right" fill="#64748b" fontSize={12} fontWeight={900} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Controles de Paginación */}
             {verTodasEmpresas && totalPaginasEmpresas > 1 && (
               <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
                 <button
@@ -408,10 +486,7 @@ export default function DashboardPage() {
                 dataKey="value"
               >
                 {porTipo.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
               <RechartsTooltip
@@ -438,18 +513,14 @@ export default function DashboardPage() {
         {/* Gráfico 4: Evolución */}
         <ChartCard
           titulo="Evolución de Incidentes"
-          info="Tendencia mensual de reportes separados por su estado actual."
+          info="Tendencia mensual de reportes. Este gráfico respeta la empresa pero muestra siempre el histórico anual."
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={tendencia}
               margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
             >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke="#e2e8f0"
-              />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis
                 dataKey="mes"
                 axisLine={false}
@@ -457,12 +528,7 @@ export default function DashboardPage() {
                 tick={{ fill: "#64748b", fontSize: 11, fontWeight: 600 }}
                 dy={10}
               />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
-              />
-
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }} />
               <RechartsTooltip
                 contentStyle={{
                   borderRadius: "12px",
@@ -472,7 +538,6 @@ export default function DashboardPage() {
                   fontSize: "12px",
                 }}
               />
-
               <Legend
                 wrapperStyle={{
                   fontSize: "11px",
@@ -480,8 +545,6 @@ export default function DashboardPage() {
                   fontWeight: "600",
                 }}
               />
-
-              {/* LÍNEA 1: PENDIENTES (Ámbar) */}
               <Line
                 type="monotone"
                 dataKey="PENDIENTE"
@@ -489,15 +552,8 @@ export default function DashboardPage() {
                 stroke="#f59e0b"
                 strokeWidth={3}
                 dot={{ r: 4, strokeWidth: 2, fill: "#fff", stroke: "#f59e0b" }}
-                activeDot={{
-                  r: 6,
-                  fill: "#f59e0b",
-                  stroke: "#fff",
-                  strokeWidth: 2,
-                }}
+                activeDot={{ r: 6, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2 }}
               />
-
-              {/* LÍNEA 2: EN REVISIÓN (Azul) */}
               <Line
                 type="monotone"
                 dataKey="EN_REVISION"
@@ -505,15 +561,8 @@ export default function DashboardPage() {
                 stroke="#3b82f6"
                 strokeWidth={3}
                 dot={{ r: 4, strokeWidth: 2, fill: "#fff", stroke: "#3b82f6" }}
-                activeDot={{
-                  r: 6,
-                  fill: "#3b82f6",
-                  stroke: "#fff",
-                  strokeWidth: 2,
-                }}
+                activeDot={{ r: 6, fill: "#3b82f6", stroke: "#fff", strokeWidth: 2 }}
               />
-
-              {/* LÍNEA 3: SOLUCIONADOS (Verde) */}
               <Line
                 type="monotone"
                 dataKey="SOLUCIONADO"
@@ -521,12 +570,7 @@ export default function DashboardPage() {
                 stroke="#10b981"
                 strokeWidth={4}
                 dot={{ r: 5, strokeWidth: 2, fill: "#fff", stroke: "#10b981" }}
-                activeDot={{
-                  r: 8,
-                  fill: "#10b981",
-                  stroke: "#fff",
-                  strokeWidth: 2,
-                }}
+                activeDot={{ r: 8, fill: "#10b981", stroke: "#fff", strokeWidth: 2 }}
               />
             </LineChart>
           </ResponsiveContainer>

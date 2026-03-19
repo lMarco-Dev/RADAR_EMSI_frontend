@@ -116,7 +116,7 @@ export default function FormularioReportePage() {
   const isStepValid = () => {
     switch (step) {
       case 1:
-        return formData.fechaOcurrido && formData.turno && formData.area;
+        return formData.fechaOcurrido && formData.turno && formData.area && formData.nombreReportante;
       case 2:
         return formData.tipoComportamiento;
       case 3:
