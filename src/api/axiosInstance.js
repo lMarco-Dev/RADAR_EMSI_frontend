@@ -16,12 +16,17 @@ axiosInstance.interceptors.request.use((config) => {
 axiosInstance.interceptors.response.use(
   (response) => response, 
   (error) => {
-    const isLoginRequest = error.config && error.config.url && error.config.url.includes('/auth/login');
+    const isAuthRequest = error.config?.url?.includes('/auth/');
 
-    if (!isLoginRequest && error.response && (error.response.status === 401 || error.response.status === 403)) {
-      const setLogout = useAuthStore.getState().setLogout;
-      setLogout(); 
-      window.location.href = '/login'; 
+    if (!isAuthRequest && error.response) {
+      if (error.response.status === 401 || error.response.status === 403) {
+        const setLogout = useAuthStore.getState().setLogout;
+        setLogout(); 
+        
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'; 
+        }
+      }
     }
     
     return Promise.reject(error);
