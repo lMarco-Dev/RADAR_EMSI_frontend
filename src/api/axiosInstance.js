@@ -23,8 +23,8 @@ axiosInstance.interceptors.response.use(
         const setLogout = useAuthStore.getState().setLogout;
         setLogout(); 
         
-        if (window.location.hash !== '#/login') {
-          window.location.href = '/#/login'; 
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
         }
       }
     }
