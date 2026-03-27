@@ -218,7 +218,7 @@ export default function ClientesPage() {
 
   const copiarEnlace = (token) => {
     toast.dismiss();
-    const link = `${window.location.origin}/reportar/${token}`;
+    const link = `${window.location.origin}/#/reportar/${token}`;
     navigator.clipboard.writeText(link);
 
     setTimeout(() => {
@@ -677,7 +677,8 @@ export default function ClientesPage() {
             <div className="flex justify-center mb-8 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
               <QRCodeCanvas
                 id="qr-canvas"
-                value={`${window.location.origin}/reportar/${qrModalData.tokenPublico}`}
+                // ¡Faltaba el /#/ aquí!
+                value={`${window.location.origin}/#/reportar/${qrModalData.tokenPublico}`}
                 size={200}
                 level={"H"}
                 includeMargin={true}
